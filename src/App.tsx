@@ -360,17 +360,15 @@ export const App: React.FC = () => {
           onUpdateDeck={updateDeck}
           onExit={() => setView(AppView.DASHBOARD)}
           onTimeUpdate={handleTimeUpdate}
-          onSessionComplete={(dur, counts) => {
-            // 单本复习结算
+          onSessionComplete={(dur, counts, cultGain) => { // 注意这里加了 cultGain
             setStats(prev => {
               const total = counts.count0_1 + counts.count2_3 + counts.count4_5;
-              const gain = (counts.count4_5 * 0.8) - (counts.count0_1 * 0.8);
               const subj = decks.find(d => d.id === activeDeckId)?.subject || 'English';
               const activities =[...(prev.daily.activities || [])];
               activities.push({ deckId: activeDeckId, deckName: decks.find(d => d.id === activeDeckId)?.name || '', mode: 'STUDY', count: total, ...counts, durationSeconds: dur, masteryGain: 0, timestamp: Date.now(), deckSubject: subj });
               return {
                 ...prev, totalReviewCount: prev.totalReviewCount + total,
-                subjectStats: { ...prev.subjectStats,[subj]: Math.max(0, prev.subjectStats[subj] + gain) },
+                subjectStats: { ...prev.subjectStats,[subj]: Math.max(0, prev.subjectStats[subj] + cultGain) }, // 精准使用从底层传来的修为增量
                 daily: { ...prev.daily, reviewCount: prev.daily.reviewCount + total, count0_1: prev.daily.count0_1 + counts.count0_1, count2_3: prev.daily.count2_3 + counts.count2_3, count4_5: prev.daily.count4_5 + counts.count4_5, activities }
               };
             });

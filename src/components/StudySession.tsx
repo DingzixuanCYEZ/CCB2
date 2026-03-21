@@ -1,17 +1,15 @@
 // src/components/StudySession.tsx (Part 1)
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Deck, Phrase, CardState } from '../types';
+import { Deck, Phrase } from '../types';
 import { Button } from './Button';
 import { 
   ArrowLeft, Settings2, RefreshCw, Eye, ArrowRight, Clock, AlertCircle, 
-  Edit2, BarChart2, ListOrdered, X, CheckCircle2, TrendingUp, Trophy, 
-  StickyNote, XCircle 
+  Edit2, BarChart2, ListOrdered, X, CheckCircle2, Trophy, StickyNote, XCircle 
 } from 'lucide-react';
 import { 
   calculateNextState, calculateBack, calculateWatchBack, 
-  mapSliderToBack, mapBackToSlider, getNScore, EPS, calculateMastery,
-  getProficiencyLabel, getDynamicColor, getScoreBadgeColor, getPhraseLabel
+  mapSliderToBack, mapBackToSlider, getNScore, EPS, calculateMastery
 } from '../utils/algo';
 
 interface StudySessionProps {
@@ -19,7 +17,7 @@ interface StudySessionProps {
   onUpdateDeck: (updatedDeck: Deck) => void;
   onExit: () => void;
   onTimeUpdate: (seconds: number) => void;
-  onSessionComplete?: (durationSeconds: number, counts: { count0_1: number; count2_3: number; count4_5: number }) => void;
+  onSessionComplete?: (durationSeconds: number, counts: { count0_1: number; count2_3: number; count4_5: number }, cultivationGain: number) => void;
 }
 
 const ALGO_TIERS =[
@@ -32,114 +30,87 @@ const ALGO_TIERS =[
 
 const ALGO_SETTINGS_KEY = 'recallflow_v2_algo_settings';
 
-const formatHeaderTime = (seconds: number) => { 
-  const m = Math.floor(seconds / 60); 
-  const s = seconds % 60; 
-  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`; 
+// === 辅助函数 ===
+const getDynamicColor = (percent: number) => `hsl(${percent * 1.2}, 75%, 45%)`;
+const getScoreBadgeColor = (score: number | undefined) => {
+  if (score === undefined || score === 0) return '#94a3b8'; 
+  if (score > 0) return getDynamicColor(Math.min(100, 40 + score * 12)); 
+  return getDynamicColor(Math.max(0, 40 + score * 10)); 
 };
-
+const formatHeaderTime = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
 const formatFullTime = (seconds: number) => { 
   if (seconds <= 0) return '0s'; 
-  const h = Math.floor(seconds / 3600); 
-  const m = Math.floor((seconds % 3600) / 60); 
-  const s = seconds % 60; 
-  if (h > 0) return `${h}h${m}m${s}s`; 
-  if (m > 0) return `${m}m${s}s`; 
-  return `${s}s`; 
+  const h = Math.floor(seconds / 3600); const m = Math.floor((seconds % 3600) / 60); const s = seconds % 60; 
+  if (h > 0) return `${h}h${m}m${s}s`; if (m > 0) return `${m}m${s}s`; return `${s}s`; 
 };
-
-const cleanNote = (text?: string) => {
-  if (!text) return "";
-  return text.replace(/\n\s*\n/g, '\n').trim();
-};
-
+const cleanNote = (text?: string) => text ? text.replace(/\n\s*\n/g, '\n').trim() : "";
 const renderFormattedText = (text?: string) => {
   if (!text) return null;
   const parts = text.split(/\[(.*?)\]/g);
   return (
     <span className="overflow-wrap-anywhere break-words hyphens-none">
-      {parts.map((part, i) => (
-        i % 2 === 1 ? (
-          <span key={i} className="text-orange-700 font-bold mx-0.5 border-b-2 border-orange-400">{part}</span>
-        ) : (
-          <span key={i}>{part.replace(/\\n/g, '\n')}</span>
-        )
-      ))}
+      {parts.map((part, i) => i % 2 === 1 ? <span key={i} className="text-orange-700 font-bold mx-0.5 border-b-2 border-orange-400">{part}</span> : <span key={i}>{part.replace(/\\n/g, '\n')}</span>)}
     </span>
   );
 };
 
 export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, onExit, onTimeUpdate, onSessionComplete }) => {
-  // === 基础与配置状态 ===
-  const [activeId, setActiveId] = useState<string | null>(deck.queue.length > 0 ? deck.queue[0] : null);
-  const [phase, setPhase] = useState<'QUESTION' | 'ANSWER'>('QUESTION');
+  const[activeId, setActiveId] = useState<string | null>(deck.queue.length > 0 ? deck.queue[0] : null);
+  
+  // 新增独立的 REPORT 页面状态
+  const [phase, setPhase] = useState<'QUESTION' | 'ANSWER' | 'REPORT'>('QUESTION');
   const [isFinished, setIsFinished] = useState(false);
   
   const [algoSettings, setAlgoSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem(ALGO_SETTINGS_KEY);
-      return saved ? JSON.parse(saved) : { tierIdx: 2, cap: 100, timeLimit: 10 };
-    } catch {
-      return { tierIdx: 2, cap: 100, timeLimit: 10 };
-    }
+    try { const saved = localStorage.getItem(ALGO_SETTINGS_KEY); return saved ? JSON.parse(saved) : { tierIdx: 2, cap: 100, timeLimit: 10 }; } 
+    catch { return { tierIdx: 2, cap: 100, timeLimit: 10 }; }
   });
 
-  // === UI 交互面板状态 ===
   const[showAlgoMenu, setShowAlgoMenu] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
-  const[isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ english: '', chinese: '', note: '' });
-  const [isAntiTouchActive, setIsAntiTouchActive] = useState(false); 
+  const [isEditing, setIsEditing] = useState(false);
+  const[editForm, setEditForm] = useState({ english: '', chinese: '', note: '' });
+  const[isAntiTouchActive, setIsAntiTouchActive] = useState(false); 
 
-  // === 会话计时与限时状态 ===
-  const [sessionDuration, setSessionDuration] = useState(0);
+  const[sessionDuration, setSessionDuration] = useState(0);
   const [timeLeft, setTimeLeft] = useState<number>(algoSettings.timeLimit);
   const [isTimeout, setIsTimeout] = useState(false);
 
-  // === 评分与计算状态 ===
   const [prof, setProf] = useState<number | null>(null);
   const [diff, setDiff] = useState<number>(2.5);
-  const[customBack, setCustomBack] = useState<number | null>(null);
+  const [customBack, setCustomBack] = useState<number | null>(null);
   const [computedBack, setComputedBack] = useState<number>(1);
-  const [computedScore, setComputedScore] = useState<number>(0);
+  const[computedScore, setComputedScore] = useState<number>(0);
 
-  // === 统计与复盘图表 ===
-  const [stats, setStats] = useState({ count0_1: 0, count2_3: 0, count4_5: 0 });
+  // 精确的统计状态
+  const[stats, setStats] = useState({ count0_1: 0, count2_3: 0, count4_5: 0 });
+  const [cultivationGain, setCultivationGain] = useState<number>(0); // 核心：精确累计本次产生的修为
+  
   const[sessionResults, setSessionResults] = useState<{phrase: Phrase, prof: number | 'watch'}[]>([]);
   const [startMastery] = useState(() => deck.phrases.length === 0 ? 0 : deck.phrases.reduce((acc, p) => acc + (p.mastery || 0), 0) / deck.phrases.length);
-  const [masteryTrend, setMasteryTrend] = useState<{ t: number; v: number }[]>([{ t: 0, v: startMastery }]);
+  const[masteryTrend, setMasteryTrend] = useState<{ t: number; v: number }[]>([{ t: 0, v: startMastery }]);
 
   const currentPhrase = useMemo(() => deck.phrases.find(p => p.id === activeId), [activeId, deck.phrases]);
   const timerRef = useRef<number | null>(null);
   const questionTimerRef = useRef<number | null>(null);
 
-  // 保存设置
   useEffect(() => { localStorage.setItem(ALGO_SETTINGS_KEY, JSON.stringify(algoSettings)); },[algoSettings]);
 
-  // 1. 总体会话计时器
   useEffect(() => {
     if (isFinished) return;
     if (masteryTrend.length === 0) setMasteryTrend([{ t: 0, v: startMastery }]);
-    timerRef.current = window.setInterval(() => {
-      onTimeUpdate(1);
-      setSessionDuration(prev => prev + 1);
-    }, 1000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [onTimeUpdate, isFinished]);
+    timerRef.current = window.setInterval(() => { onTimeUpdate(1); setSessionDuration(prev => prev + 1); }, 1000);
+    return () => clearInterval(timerRef.current!);
+  },[onTimeUpdate, isFinished]);
 
-  // 2. 题目倒计时逻辑
   useEffect(() => {
     if (phase === 'QUESTION' && algoSettings.timeLimit > 0 && !isEditing && !isFinished) {
       setTimeLeft(algoSettings.timeLimit);
       setIsTimeout(false);
       questionTimerRef.current = window.setInterval(() => {
         setTimeLeft(prev => {
-          if (prev <= 0.1) {
-            if (questionTimerRef.current) clearInterval(questionTimerRef.current);
-            setIsTimeout(true);
-            return 0;
-          }
+          if (prev <= 0.1) { clearInterval(questionTimerRef.current!); setIsTimeout(true); return 0; }
           return prev - 0.1;
         });
       }, 100);
@@ -149,14 +120,12 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     return () => { if (questionTimerRef.current) clearInterval(questionTimerRef.current); };
   },[phase, algoSettings.timeLimit, isEditing, isFinished, activeId]);
 
-  // 3. 编辑模式同步
   useEffect(() => {
     if (isEditing && currentPhrase) {
       setEditForm({ english: currentPhrase.english, chinese: currentPhrase.chinese, note: (currentPhrase.note || '').replace(/\\n/g, '\n') });
     }
   }, [isEditing, currentPhrase]);
 
-  // 4. 计算观望模式下的默认后推位
   const watchBackValue = useMemo(() => {
     if (!currentPhrase) return 1;
     const C = ALGO_TIERS[algoSettings.tierIdx].C;
@@ -165,7 +134,6 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     return calculateWatchBack(nscore, C, base);
   },[currentPhrase, diff, algoSettings]);
 
-  // 5. 实时推算选择熟练度后的预期结果 (Back & Score)
   useEffect(() => {
     if (phase === 'ANSWER' && currentPhrase && prof !== null) {
       const todayDays = Math.floor(Date.now() / 86400000);
@@ -177,19 +145,15 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
       setComputedScore(newScore);
       setComputedBack(calculateBack(nscore, C, base));
     }
-  }, [phase, prof, diff, currentPhrase, algoSettings]);
+  },[phase, prof, diff, currentPhrase, algoSettings]);
 
-  // 6. 键盘快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isEditing || isFinished || isAntiTouchActive || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       if (phase === 'QUESTION') {
-        if (e.code === 'Space' || e.key === 'Enter') {
-          e.preventDefault();
-          handleShowAnswer();
-        }
+        if (e.code === 'Space' || e.key === 'Enter') { e.preventDefault(); handleShowAnswer(); }
       } else if (phase === 'ANSWER') {
         if (e.code === 'Space' || e.key === 'Enter') {
           e.preventDefault();
@@ -209,7 +173,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [phase, isEditing, isFinished, prof, isTimeout, isAntiTouchActive]);
+  },[phase, isEditing, isFinished, prof, isTimeout, isAntiTouchActive]);
 
   const handleShowAnswer = useCallback(() => {
     if (questionTimerRef.current) clearInterval(questionTimerRef.current);
@@ -226,7 +190,6 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     setIsEditing(false);
   },[currentPhrase, editForm, deck, onUpdateDeck]);
 
-  // --- 核心：完成卡片打分与排序 ---
   const handleFinishCard = useCallback((isWatch: boolean) => {
     if (!currentPhrase || isAntiTouchActive) return;
 
@@ -255,6 +218,11 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
         count2_3: prev.count2_3 + (prof >= 2 && prof <= 3 ? 1 : 0),
         count4_5: prev.count4_5 + (prof >= 4 ? 1 : 0),
       }));
+      
+      // === 精确计算修为并累加 ===
+      const gainMap =[-1.0, -0.6, -0.2, 0.2, 0.6, 1.0];
+      setCultivationGain(prev => prev + gainMap[prof]);
+
       setSessionResults(prev =>[...prev, { phrase: currentPhrase, prof }]);
     }
 
@@ -279,16 +247,25 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
 
     onUpdateDeck({ ...deck, queue: newQueue, phrases: updatedPhrases });
 
-    setPhase('QUESTION');
-    setIsTimeout(false);
-    setTimeLeft(algoSettings.timeLimit);
-    setProf(null);
-    setCustomBack(null);
-    setActiveId(newQueue.length > 0 ? newQueue[0] : null);
+    if (newQueue.length === 0) {
+      // 触发报告页面
+      setIsFinished(true);
+      setPhase('REPORT');
+      setActiveId(null);
+    } else {
+      setPhase('QUESTION');
+      setIsTimeout(false);
+      setTimeLeft(algoSettings.timeLimit);
+      setProf(null);
+      setCustomBack(null);
+      setActiveId(newQueue[0]);
+    }
   },[currentPhrase, isAntiTouchActive, algoSettings, diff, customBack, prof, deck, activeId, sessionDuration, onUpdateDeck, watchBackValue, computedBack]);
 
   const handleManualExit = () => {
-    if (onSessionComplete) onSessionComplete(sessionDuration, stats);
+    if (onSessionComplete) {
+      onSessionComplete(sessionDuration, stats, cultivationGain); // 上报精确修为
+    }
     onExit();
   };
 
@@ -314,11 +291,12 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
       </div>
     );
   };
-// src/components/StudySession.tsx (Part 2) 接着上文的代码
+// src/components/StudySession.tsx (Part 2)
 
   // ========== UI 渲染逻辑 ==========
-  
-  if (!currentPhrase) {
+
+  // 专属的复盘报告页面
+  if (phase === 'REPORT') {
     const endMastery = masteryTrend.length > 0 ? masteryTrend[masteryTrend.length - 1].v : startMastery;
     const gain = endMastery - startMastery;
 
@@ -327,13 +305,13 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
         <div className="max-w-2xl w-full bg-white rounded-3xl shadow-2xl p-8 flex flex-col space-y-6 my-8">
           <div className="text-center">
             <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4 text-emerald-600"><Trophy className="w-8 h-8" /></div>
-            <h2 className="text-3xl font-black text-slate-800">背诵结算</h2>
+            <h2 className="text-3xl font-black text-slate-800">学习报告</h2>
             <p className="text-slate-400 font-bold text-sm uppercase tracking-widest mt-1">{deck.name}</p>
           </div>
           
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-center">
-              <div className="text-xs text-slate-400 font-black uppercase tracking-widest mb-1">本次复习</div>
+              <div className="text-xs text-slate-400 font-black uppercase tracking-widest mb-1">本次学习总计</div>
               <div className="text-3xl font-black text-slate-800">{stats.count0_1 + stats.count2_3 + stats.count4_5} <span className="text-sm text-slate-400">词</span></div>
               <div className="text-xs font-bold mt-2 flex justify-center gap-2 whitespace-nowrap">
                 <span className="text-emerald-500">{stats.count4_5} 优</span>
@@ -343,9 +321,12 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                 <span className="text-rose-500">{stats.count0_1} 差</span>
               </div>
             </div>
-            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-center">
-              <div className="text-xs text-slate-400 font-black uppercase tracking-widest mb-1">专注时长</div>
-              <div className="text-3xl font-black text-slate-800">{formatFullTime(sessionDuration)}</div>
+            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-center flex flex-col justify-center">
+              <div className="text-xs text-slate-400 font-black uppercase tracking-widest mb-1">本次获得修为</div>
+              <div className={`text-3xl font-black ${cultivationGain >= 0 ? 'text-indigo-600' : 'text-rose-500'}`}>
+                {cultivationGain > 0 ? '+' : ''}{cultivationGain.toFixed(1)}
+              </div>
+              <div className="text-xs font-bold text-slate-400 mt-2">精确根据打分计算</div>
             </div>
           </div>
           
@@ -394,6 +375,9 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
       </div>
     );
   }
+
+  // 正常复习状态
+  if (!currentPhrase) return null; // 兜底
 
   const liveMasteryValue = masteryTrend.length > 0 ? masteryTrend[masteryTrend.length - 1].v : startMastery;
   const isEnToCn = deck.studyMode === 'EN_CN';
@@ -536,7 +520,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                         </div>
                         <div className="flex gap-1.5">
                           {[0, 1, 2, 3, 4, 5].map(v => (
-                            <button key={v} onClick={() => setDiff(v)} className={`flex-1 py-2 rounded-lg font-black text-sm transition-all border-2 ${diff === v ? 'bg-indigo-500 border-indigo-500 text-white shadow-md transform scale-105' : 'bg-white border-slate-200 text-slate-400 hover:border-indigo-300'}`}>{v}</button>
+                            <button key={v} onClick={() => setDiff(v)} className={`flex-1 py-2.5 rounded-lg font-black text-sm transition-all border-2 ${diff === v ? 'bg-indigo-500 border-indigo-500 text-white shadow-md' : 'bg-white border-slate-200 text-slate-400 hover:border-indigo-300'}`}>{v}</button>
                           ))}
                         </div>
                       </div>
@@ -635,7 +619,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
               if (!p) return null;
               const isCurrent = id === activeId;
               const badgeColor = getScoreBadgeColor(p.score);
-              const label = getPhraseLabel(p.score);
+              const label = (p.score === undefined || p.score === 0) ? '新' : p.score > 0 ? `对${Math.ceil(p.score)}` : `错${Math.ceil(Math.abs(p.score))}`;
               
               return (
                 <div key={id} className={`flex items-center justify-between text-sm py-2 px-3 rounded-lg border transition-all ${isCurrent ? 'bg-indigo-50 border-indigo-200 shadow-sm scale-[1.02]' : 'bg-white border-transparent hover:bg-slate-50 hover:border-slate-200'}`}>
