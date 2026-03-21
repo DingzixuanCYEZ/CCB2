@@ -1,4 +1,4 @@
-// src/components/StudySession.tsx (Part 1)
+// src/components/StudySession.tsx
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Deck, Phrase, CardState } from '../types';
@@ -11,7 +11,7 @@ import {
 import { 
   calculateNextState, calculateBack, calculateWatchBack, 
   mapSliderToBack, mapBackToSlider, getNScore, EPS, calculateMastery,
-  getProficiencyLabel
+  getProficiencyLabel, getDynamicColor, getScoreBadgeColor, getPhraseLabel
 } from '../utils/algo';
 
 interface StudySessionProps {
@@ -31,18 +31,6 @@ const ALGO_TIERS =[
 ];
 
 const ALGO_SETTINGS_KEY = 'recallflow_v2_algo_settings';
-
-// === 辅助函数：颜色与格式化 ===
-const getDynamicColor = (percent: number) => { 
-  const hue = (percent * 1.2); 
-  return `hsl(${hue}, 75%, 45%)`; 
-};
-
-const getScoreBadgeColor = (score: number | undefined) => {
-  if (score === undefined || score === 0) return '#94a3b8'; // 新词 Slate
-  if (score > 0) return getDynamicColor(Math.min(100, 40 + score * 12)); // 正分偏绿/蓝
-  return getDynamicColor(Math.max(0, 40 + score * 10)); // 负分偏红/橙
-};
 
 const formatHeaderTime = (seconds: number) => { 
   const m = Math.floor(seconds / 60); 
@@ -82,6 +70,7 @@ const renderFormattedText = (text?: string) => {
 };
 
 export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, onExit, onTimeUpdate, onSessionComplete }) => {
+// ... 后面的代码保持完全不变 ...
   // === 基础与配置状态 ===
   const [activeId, setActiveId] = useState<string | null>(deck.queue.length > 0 ? deck.queue[0] : null);
   const [phase, setPhase] = useState<'QUESTION' | 'ANSWER'>('QUESTION');

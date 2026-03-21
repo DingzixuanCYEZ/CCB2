@@ -1,4 +1,4 @@
-// src/components/DailyReviewSession.tsx (Part 1)
+// src/components/DailyReviewSession.tsx
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Deck, Phrase } from '../types';
@@ -10,9 +10,8 @@ import {
 import { 
   calculateNextState, calculateBack, calculateWatchBack, 
   mapSliderToBack, mapBackToSlider, getNScore, EPS, calculateMastery,
-  getProficiencyLabel
+  getProficiencyLabel, getScoreBadgeColor, getPhraseLabel
 } from '../utils/algo';
-import { getBadgeColor } from '../App'; 
 
 interface DailyReviewSessionProps {
   selectedDecks: Deck[];
@@ -37,7 +36,6 @@ interface DailyQueueItem {
   phraseId: string;
 }
 
-// 辅助函数：清洗与高亮富文本
 const renderFormattedText = (text?: string) => {
   if (!text) return null;
   const parts = text.split(/\[(.*?)\]/g);
@@ -64,16 +62,20 @@ const formatFullTime = (seconds: number) => {
   return `${s}s`; 
 };
 
+function formatHeaderTime(seconds: number) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
 export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({ 
   selectedDecks, onUpdateDecks, onExit, onTimeUpdate, onSessionComplete 
 }) => {
-  // === 1. 跨词本工作区与队列初始化 ===
   const[workingDecks, setWorkingDecks] = useState<Deck[]>(selectedDecks);
-  const [dailyQueue, setDailyQueue] = useState<DailyQueueItem[]>([]);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const[dailyQueue, setDailyQueue] = useState<DailyQueueItem[]>([]);
+  const[isInitialized, setIsInitialized] = useState(false);
   const [totalPending, setTotalPending] = useState(0);
 
-  // 初始化萃取 back <= 0 的词条
   useEffect(() => {
     if (isInitialized) return;
     const initialQueue: DailyQueueItem[] =[];
@@ -84,7 +86,6 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
         }
       });
     });
-    // 全局打乱
     for (let i = initialQueue.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [initialQueue[i], initialQueue[j]] =[initialQueue[j], initialQueue[i]];
@@ -94,9 +95,8 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
     setIsInitialized(true);
   },[workingDecks, isInitialized]);
 
-  // === 2. 状态管理 ===
-  const [phase, setPhase] = useState<'QUESTION' | 'ANSWER'>('QUESTION');
-  const [isFinished, setIsFinished] = useState(false);
+  const[phase, setPhase] = useState<'QUESTION' | 'ANSWER'>('QUESTION');
+  const[isFinished, setIsFinished] = useState(false);
   
   const [algoSettings, setAlgoSettings] = useState(() => {
     try {
@@ -107,36 +107,29 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
     }
   });
 
-  const [showAlgoMenu, setShowAlgoMenu] = useState(false);
-  
-  // 倒计时与时间
-  const [sessionDuration, setSessionDuration] = useState(0);
+  const[sessionDuration, setSessionDuration] = useState(0);
   const [timeLeft, setTimeLeft] = useState<number>(algoSettings.timeLimit);
   const [isTimeout, setIsTimeout] = useState(false);
 
-  // 打分机制
   const [prof, setProf] = useState<number | null>(null);
   const [diff, setDiff] = useState<number>(2.5);
   const[customBack, setCustomBack] = useState<number | null>(null);
   const [computedBack, setComputedBack] = useState<number>(1);
-  const [isAntiTouchActive, setIsAntiTouchActive] = useState(false);
+  const[isAntiTouchActive, setIsAntiTouchActive] = useState(false);
 
   const [stats, setStats] = useState({ count0_1: 0, count2_3: 0, count4_5: 0 });
 
   const timerRef = useRef<number | null>(null);
   const questionTimerRef = useRef<number | null>(null);
 
-  // 当前激活的词条信息
   const activeItem = dailyQueue.length > 0 ? dailyQueue[0] : null;
   const activeDeck = useMemo(() => workingDecks.find(d => d.id === activeItem?.deckId),[workingDecks, activeItem]);
   const currentPhrase = useMemo(() => activeDeck?.phrases.find(p => p.id === activeItem?.phraseId), [activeDeck, activeItem]);
 
-  // --- 保存设置 ---
   useEffect(() => {
     localStorage.setItem(ALGO_SETTINGS_KEY, JSON.stringify(algoSettings));
   },[algoSettings]);
 
-  // --- 全局倒计时 ---
   useEffect(() => {
     if (isFinished || !isInitialized) return;
     timerRef.current = window.setInterval(() => {
@@ -146,7 +139,6 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   },[onTimeUpdate, isFinished, isInitialized]);
 
-  // --- 题目倒计时 ---
   useEffect(() => {
     if (phase === 'QUESTION' && algoSettings.timeLimit > 0 && !isFinished && isInitialized && activeItem) {
       setTimeLeft(algoSettings.timeLimit);
@@ -167,7 +159,6 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
     return () => { if (questionTimerRef.current) clearInterval(questionTimerRef.current); };
   }, [phase, algoSettings.timeLimit, isFinished, isInitialized, activeItem]);
 
-  // --- 实时计算预期后推值 ---
   useEffect(() => {
     if (phase === 'ANSWER' && currentPhrase && prof !== null) {
       const todayDays = Math.floor(Date.now() / 86400000);
@@ -180,7 +171,6 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
     }
   },[phase, prof, diff, currentPhrase, algoSettings]);
 
-  // --- 快捷键监听 ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isFinished || !isInitialized || isAntiTouchActive || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -199,7 +189,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
           const keyNum = parseInt(e.key);
           if (!isNaN(keyNum) && keyNum >= 0 && keyNum <= 5) {
             e.preventDefault();
-            if (isTimeout && keyNum >= 4) return; // 超时禁用4,5
+            if (isTimeout && keyNum >= 4) return; 
             setProf(keyNum);
           } else if (e.code === 'KeyW') {
             e.preventDefault();
@@ -210,7 +200,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [phase, isFinished, isInitialized, prof, isTimeout, isAntiTouchActive]);
+  },[phase, isFinished, isInitialized, prof, isTimeout, isAntiTouchActive]);
 
   const handleShowAnswer = useCallback(() => {
     if (questionTimerRef.current) clearInterval(questionTimerRef.current);
@@ -218,7 +208,6 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
     setPhase('ANSWER');
   }, [currentPhrase]);
 
-  // === 3. 核心：完成卡片打分与每日循环队列管理 ===
   const handleFinishCard = useCallback((isWatch: boolean) => {
     if (!currentPhrase || !activeDeck || !activeItem || isAntiTouchActive) return;
 
@@ -252,7 +241,6 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
       }));
     }
 
-    // 组装新词条数据
     const updatedPhrase: Phrase = {
       ...currentPhrase,
       score: isWatch ? currentPhrase.score : newScore,
@@ -264,7 +252,6 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
       lastReviewedAt: Date.now()
     };
 
-    // A. 跨库持久化：修改原 Deck 中的 Phrase（绝不改变其在原 deck.queue 的位置）
     const updatedWorkingDecks = workingDecks.map(d => {
       if (d.id === activeDeck.id) {
         return { ...d, phrases: d.phrases.map(p => p.id === updatedPhrase.id ? updatedPhrase : p) };
@@ -272,23 +259,18 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
       return d;
     });
     setWorkingDecks(updatedWorkingDecks);
-    onUpdateDecks(updatedWorkingDecks); // 实时推送到外层
+    onUpdateDecks(updatedWorkingDecks); 
 
-    // B. 本地每日队列管理 (判断通关条件：back > 100)
     let newDailyQueue = [...dailyQueue];
-    newDailyQueue.shift(); // 移除当前
+    newDailyQueue.shift(); 
 
     if (finalBack <= 100) {
-      // 尚未通过，重新插入每日队列
       const insertIdx = Math.min(finalBack, newDailyQueue.length);
       newDailyQueue.splice(insertIdx, 0, activeItem);
-    } else {
-      // 成功通过每日复习，不插入（出列）
-    }
+    } 
     
     setDailyQueue(newDailyQueue);
 
-    // 阶段判断
     if (newDailyQueue.length === 0) {
       setIsFinished(true);
     } else {
@@ -304,9 +286,6 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
     if (onSessionComplete) onSessionComplete(sessionDuration, stats);
     onExit();
   };
-// src/components/DailyReviewSession.tsx (Part 2)
-
-  // ========== UI 渲染逻辑 ==========
 
   if (!isInitialized) return <div className="fixed inset-0 flex items-center justify-center bg-white"><div className="text-xl font-bold text-slate-400">正在生成乱序复习大纲...</div></div>;
 
@@ -354,17 +333,15 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
   const answerText = isEnToCn ? currentPhrase.chinese : currentPhrase.english;
   
   const isNew = currentPhrase.score === undefined || currentPhrase.score === 0;
-  const profLabelsNew =["完全没思路", "思路大体对", "缺东西", "差一点", "正确但不确定", "正确"];
-  const profLabelsOld =["完全没印象", "印象不清楚", "缺东西", "差一点", "勉强想出", "快速想出"];
-  const currentLabels = isNew ? profLabelsNew : profLabelsOld;
+  const currentLabels = isNew 
+    ?["完全没思路", "思路大体对", "缺东西", "差一点", "正确但不确定", "正确"]
+    :["完全没印象", "印象不清楚", "缺东西", "差一点", "勉强想出", "快速想出"];
 
-  const currentMastery = calculateMastery(getNScore(currentPhrase.score ?? 0, currentPhrase.diff ?? 2.5));
   const progressPercent = Math.min(100, Math.max(0, ((totalPending - dailyQueue.length) / totalPending) * 100));
 
   return (
     <div className="fixed inset-0 bg-slate-50 z-[100] flex flex-col h-full overflow-hidden">
       
-      {/* 顶栏控制区 (带有跨词本指示器与进度条) */}
       <div className="bg-white shadow-sm shrink-0 relative z-[60]">
         <div className="flex items-center justify-between px-3 py-2 gap-3 h-14">
           <button onClick={handleManualExit} className="p-2 text-slate-400 hover:text-slate-600 active:scale-95 transition-transform shrink-0"><ArrowLeft className="w-5 h-5"/></button>
@@ -374,12 +351,9 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
               <span className="text-[10px] text-slate-400 font-bold truncate pr-2">每日复习 · {activeDeck.name}</span>
               <span className="text-[10px] font-mono font-bold text-slate-400">{formatHeaderTime(sessionDuration)}</span>
             </div>
-            
-            {/* 总体进度条 (通关数量 / 总量) */}
             <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden relative border border-slate-50">
               <div className="absolute top-0 left-0 h-full bg-rose-400 transition-all duration-500 ease-out" style={{ width: `${progressPercent}%` }}></div>
             </div>
-            
             <div className="flex justify-between items-start mt-1 leading-none">
               <span className="text-[10px] font-black text-rose-500">{progressPercent.toFixed(1)}%</span>
               <span className="text-[10px] font-bold text-slate-400 flex items-center">
@@ -388,22 +362,14 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
             </div>
           </div>
           
-          <div className="w-10 flex justify-end shrink-0">
-            {/* 保留了右侧的预留位，保持标题居中对称 */}
-          </div>
+          <div className="w-10 flex justify-end shrink-0" />
         </div>
       </div>
 
-      {/* 主视图区域 */}
       <div className="flex-1 flex relative overflow-hidden">
         <div className="flex-1 flex flex-col items-center p-4 sm:p-6 transition-all duration-300">
-          
-          {/* 中心答题卡 */}
           <div className="w-full max-w-2xl bg-white rounded-3xl shadow-xl border border-slate-100 flex flex-col h-full max-h-[calc(100vh-90px)] sm:max-h-[600px] overflow-hidden relative">
-            
             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 sm:p-8 flex flex-col items-center w-full relative">
-              
-              {/* 词条基本状态信息 (顶针标签) */}
               <div className="w-full flex justify-between items-center mb-6">
                  <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest border px-2 py-0.5 rounded-full">
                     {isNew ? 'NEW' : `Score: ${currentPhrase.score?.toFixed(2)}`}
@@ -413,13 +379,11 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                  </span>
               </div>
 
-              {/* 题目 */}
               <div className="w-full flex flex-col items-center text-center pt-4 mb-6">
                 <h1 className="text-3xl sm:text-4xl font-black text-slate-800 leading-snug break-words max-w-full">
                   {renderFormattedText(questionText)}
                 </h1>
                 
-                {/* 倒计时条 */}
                 {phase === 'QUESTION' && algoSettings.timeLimit > 0 && (
                   <div className="mt-8 flex flex-col items-center animate-in fade-in">
                     <div className={`text-sm font-black tabular-nums mb-2 flex items-center justify-center gap-1 ${isTimeout ? 'text-rose-500' : 'text-indigo-400'}`}>
@@ -432,7 +396,6 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                 )}
               </div>
 
-              {/* 答案区与打分控制台 */}
               {phase === 'ANSWER' && (
                 <div className="w-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300 pb-4 mt-auto">
                   <div className="text-center py-2 px-4 rounded-xl w-full mb-4">
@@ -451,7 +414,6 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                   )}
 
                   <div className="w-full mt-auto space-y-6">
-                    {/* 1. 记忆难度选取 */}
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 shadow-sm">
                       <div className="flex justify-between items-center mb-3 ml-1">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">记忆难度 (Difficulty)</span>
@@ -464,7 +426,6 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                       </div>
                     </div>
 
-                    {/* 2. 熟练度打分 */}
                     <div>
                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 ml-1">熟练度评分 (Proficiency)</span>
                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -481,11 +442,10 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                        </div>
                     </div>
 
-                    {/* 3. 预期后推步数展示 (对于每日复习不可拖动进度条，只能靠算法打出 >100) */}
                     <div className="bg-slate-900 p-5 rounded-xl shadow-xl flex justify-between items-center animate-in slide-in-from-bottom-2">
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">单本内预期后推位置</span>
                         <div className="flex items-center gap-3">
-                            <span className="text-[10px] font-bold text-slate-400">通关需要 {"> 100"}</span>
+                            <span className="text-[10px] font-bold text-slate-400">通关需要 &gt; 100</span>
                             <span className={`font-mono font-black text-xl ${computedBack > 100 ? 'text-emerald-400' : 'text-rose-400'}`}>{prof !== null ? computedBack : '-'}</span>
                         </div>
                     </div>
@@ -493,12 +453,9 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                   </div>
                 </div>
               )}
-              
-              {/* 阻挡层，防止连击保存和误触 */}
               {isAntiTouchActive && <div className="absolute inset-0 z-20 cursor-not-allowed"></div>}
             </div>
             
-            {/* 底部操作区 */}
             <div className="p-4 sm:p-5 bg-white border-t border-slate-100 shrink-0">
               {phase === 'QUESTION' ? (
                 <Button fullWidth onClick={handleShowAnswer} className="py-4 text-lg font-black shadow-lg shadow-indigo-100">查看答案 (Space)</Button>
@@ -517,10 +474,3 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
     </div>
   );
 };
-
-// 内部使用的简单时间格式化辅助函数
-function formatHeaderTime(seconds: number) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-}

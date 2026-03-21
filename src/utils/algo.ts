@@ -1,3 +1,5 @@
+// src/utils/algo.ts
+
 export const EPS = 1e-6;
 
 export const getNScore = (score: number, diff: number) => {
@@ -36,24 +38,21 @@ export const calculateNextState = (
   let nscore = 0;
 
   if (isNew) {
-    const mapping =[-2, -1, -EPS, 1, 2, 3];
+    const mapping = [-2, -1, -EPS, 1, 2, 3];
     score = mapping[prof];
     nscore = getNScore(score, diff);
   } else if (score > 0) {
     const onscore = getNScore(score, diff);
     const expect = Math.floor((C * Math.pow(base, onscore)) / cap);
-    const days = dateGap; 
-    
-    const limit = days >= expect ? Infinity : 1 / (1 + Math.log(expect / days));
+    const limit = dateGap >= expect ? Infinity : 1 / (1 + Math.log(expect / dateGap));
     const term = Math.min(4 / Math.max(EPS, score), 2);
-    
     const scoreChanges =[term - 5, term - 4, term - 3, term - 2, term - 1, Math.max(1, term)];
+    
     score += Math.min(limit, scoreChanges[prof]);
-
     if (score < 0) score = -Math.log(-score + 1);
     if (Math.abs(score) < EPS) score = -EPS;
 
-    const shuMap = [-1, 0, 1, 2, 4, Infinity];
+    const shuMap =[-1, 0, 1, 2, 4, Infinity];
     const shu = shuMap[prof];
     nscore = getNScore(Math.min(shu, score), diff);
   } else {
@@ -89,4 +88,29 @@ export const mapSliderToBack = (val: number) => {
 export const mapBackToSlider = (back: number) => {
   if (back <= 1) return 0;
   return (Math.log(back) / Math.log(100000)) * 1000;
+};
+
+// ========== UI 辅助与格式化函数 ==========
+
+export const getProficiencyLabel = (isNew: boolean, prof: number): string => {
+  const newLabels =["完全没思路", "思路大体对", "缺东西", "差一点", "正确但不确定", "正确"];
+  const oldLabels =["完全没印象", "印象不清楚", "缺东西", "差一点", "勉强想出", "快速想出"];
+  return isNew ? newLabels[prof] : oldLabels[prof];
+};
+
+export const getDynamicColor = (percent: number) => {
+  const hue = (percent * 1.2);
+  return `hsl(${hue}, 75%, 45%)`;
+};
+
+export const getScoreBadgeColor = (score: number | undefined) => {
+  if (score === undefined || score === 0) return '#94a3b8'; // 新词 Slate
+  if (score > 0) return getDynamicColor(Math.min(100, 40 + score * 12)); // 正分偏绿/蓝
+  return getDynamicColor(Math.max(0, 40 + score * 10)); // 负分偏红/橙
+};
+
+export const getPhraseLabel = (score: number | undefined) => {
+  if (score === undefined || score === 0) return '新';
+  if (score > 0) return `对${Math.ceil(score)}`;
+  return `错${Math.ceil(Math.abs(score))}`;
 };
