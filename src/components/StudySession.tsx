@@ -1,4 +1,4 @@
-// src/components/StudySession.tsx
+// src/components/StudySession.tsx (Part 1)
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Deck, Phrase, CardState } from '../types';
@@ -11,7 +11,7 @@ import {
 import { 
   calculateNextState, calculateBack, calculateWatchBack, 
   mapSliderToBack, mapBackToSlider, getNScore, EPS, calculateMastery,
-  getProficiencyLabel
+  getProficiencyLabel, getDynamicColor, getScoreBadgeColor, getPhraseLabel
 } from '../utils/algo';
 
 interface StudySessionProps {
@@ -32,59 +32,81 @@ const ALGO_TIERS =[
 
 const ALGO_SETTINGS_KEY = 'recallflow_v2_algo_settings';
 
-// === 辅助函数 ===
-const getDynamicColor = (percent: number) => `hsl(${percent * 1.2}, 75%, 45%)`;
-const getScoreBadgeColor = (score: number | undefined) => {
-  if (score === undefined || score === 0) return '#94a3b8'; 
-  if (score > 0) return getDynamicColor(Math.min(100, 40 + score * 12)); 
-  return getDynamicColor(Math.max(0, 40 + score * 10)); 
+const formatHeaderTime = (seconds: number) => { 
+  const m = Math.floor(seconds / 60); 
+  const s = seconds % 60; 
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`; 
 };
-const formatHeaderTime = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
+
 const formatFullTime = (seconds: number) => { 
   if (seconds <= 0) return '0s'; 
-  const h = Math.floor(seconds / 3600); const m = Math.floor((seconds % 3600) / 60); const s = seconds % 60; 
-  if (h > 0) return `${h}h${m}m${s}s`; if (m > 0) return `${m}m${s}s`; return `${s}s`; 
+  const h = Math.floor(seconds / 3600); 
+  const m = Math.floor((seconds % 3600) / 60); 
+  const s = seconds % 60; 
+  if (h > 0) return `${h}h${m}m${s}s`; 
+  if (m > 0) return `${m}m${s}s`; 
+  return `${s}s`; 
 };
-const cleanNote = (text?: string) => text ? text.replace(/\n\s*\n/g, '\n').trim() : "";
+
+const cleanNote = (text?: string) => {
+  if (!text) return "";
+  return text.replace(/\n\s*\n/g, '\n').trim();
+};
+
 const renderFormattedText = (text?: string) => {
   if (!text) return null;
   const parts = text.split(/\[(.*?)\]/g);
   return (
     <span className="overflow-wrap-anywhere break-words hyphens-none">
-      {parts.map((part, i) => i % 2 === 1 ? <span key={i} className="text-orange-700 font-bold mx-0.5 border-b-2 border-orange-400">{part}</span> : <span key={i}>{part.replace(/\\n/g, '\n')}</span>)}
+      {parts.map((part, i) => (
+        i % 2 === 1 ? (
+          <span key={i} className="text-orange-700 font-bold mx-0.5 border-b-2 border-orange-400">{part}</span>
+        ) : (
+          <span key={i}>{part.replace(/\\n/g, '\n')}</span>
+        )
+      ))}
     </span>
   );
 };
 
 export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, onExit, onTimeUpdate, onSessionComplete }) => {
+  // === 基础与配置状态 ===
   const [activeId, setActiveId] = useState<string | null>(deck.queue.length > 0 ? deck.queue[0] : null);
   const [phase, setPhase] = useState<'QUESTION' | 'ANSWER'>('QUESTION');
   const [isFinished, setIsFinished] = useState(false);
   
   const [algoSettings, setAlgoSettings] = useState(() => {
-    try { const saved = localStorage.getItem(ALGO_SETTINGS_KEY); return saved ? JSON.parse(saved) : { tierIdx: 2, cap: 100, timeLimit: 10 }; } 
-    catch { return { tierIdx: 2, cap: 100, timeLimit: 10 }; }
+    try {
+      const saved = localStorage.getItem(ALGO_SETTINGS_KEY);
+      return saved ? JSON.parse(saved) : { tierIdx: 2, cap: 100, timeLimit: 10 };
+    } catch {
+      return { tierIdx: 2, cap: 100, timeLimit: 10 };
+    }
   });
 
+  // === UI 交互面板状态 ===
   const[showAlgoMenu, setShowAlgoMenu] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
+  const[isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({ english: '', chinese: '', note: '' });
   const [isAntiTouchActive, setIsAntiTouchActive] = useState(false); 
 
-  const[sessionDuration, setSessionDuration] = useState(0);
+  // === 会话计时与限时状态 ===
+  const [sessionDuration, setSessionDuration] = useState(0);
   const [timeLeft, setTimeLeft] = useState<number>(algoSettings.timeLimit);
   const [isTimeout, setIsTimeout] = useState(false);
 
+  // === 评分与计算状态 ===
   const [prof, setProf] = useState<number | null>(null);
   const [diff, setDiff] = useState<number>(2.5);
-  const [customBack, setCustomBack] = useState<number | null>(null);
+  const[customBack, setCustomBack] = useState<number | null>(null);
   const [computedBack, setComputedBack] = useState<number>(1);
-  const[computedScore, setComputedScore] = useState<number>(0);
+  const [computedScore, setComputedScore] = useState<number>(0);
 
+  // === 统计与复盘图表 ===
   const [stats, setStats] = useState({ count0_1: 0, count2_3: 0, count4_5: 0 });
-  const[sessionResults, setSessionResults] = useState<{phrase: Phrase, prof: number}[]>([]);
+  const[sessionResults, setSessionResults] = useState<{phrase: Phrase, prof: number | 'watch'}[]>([]);
   const [startMastery] = useState(() => deck.phrases.length === 0 ? 0 : deck.phrases.reduce((acc, p) => acc + (p.mastery || 0), 0) / deck.phrases.length);
   const [masteryTrend, setMasteryTrend] = useState<{ t: number; v: number }[]>([{ t: 0, v: startMastery }]);
 
@@ -92,22 +114,32 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
   const timerRef = useRef<number | null>(null);
   const questionTimerRef = useRef<number | null>(null);
 
+  // 保存设置
   useEffect(() => { localStorage.setItem(ALGO_SETTINGS_KEY, JSON.stringify(algoSettings)); },[algoSettings]);
 
+  // 1. 总体会话计时器
   useEffect(() => {
     if (isFinished) return;
     if (masteryTrend.length === 0) setMasteryTrend([{ t: 0, v: startMastery }]);
-    timerRef.current = window.setInterval(() => { onTimeUpdate(1); setSessionDuration(prev => prev + 1); }, 1000);
-    return () => clearInterval(timerRef.current!);
-  },[onTimeUpdate, isFinished]);
+    timerRef.current = window.setInterval(() => {
+      onTimeUpdate(1);
+      setSessionDuration(prev => prev + 1);
+    }, 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [onTimeUpdate, isFinished]);
 
+  // 2. 题目倒计时逻辑
   useEffect(() => {
     if (phase === 'QUESTION' && algoSettings.timeLimit > 0 && !isEditing && !isFinished) {
       setTimeLeft(algoSettings.timeLimit);
       setIsTimeout(false);
       questionTimerRef.current = window.setInterval(() => {
         setTimeLeft(prev => {
-          if (prev <= 0.1) { clearInterval(questionTimerRef.current!); setIsTimeout(true); return 0; }
+          if (prev <= 0.1) {
+            if (questionTimerRef.current) clearInterval(questionTimerRef.current);
+            setIsTimeout(true);
+            return 0;
+          }
           return prev - 0.1;
         });
       }, 100);
@@ -117,13 +149,23 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     return () => { if (questionTimerRef.current) clearInterval(questionTimerRef.current); };
   },[phase, algoSettings.timeLimit, isEditing, isFinished, activeId]);
 
+  // 3. 编辑模式同步
   useEffect(() => {
     if (isEditing && currentPhrase) {
       setEditForm({ english: currentPhrase.english, chinese: currentPhrase.chinese, note: (currentPhrase.note || '').replace(/\\n/g, '\n') });
     }
   }, [isEditing, currentPhrase]);
 
-  // 实时推算预期结果 (Back & Score)
+  // 4. 计算观望模式下的默认后推位
+  const watchBackValue = useMemo(() => {
+    if (!currentPhrase) return 1;
+    const C = ALGO_TIERS[algoSettings.tierIdx].C;
+    const base = ALGO_TIERS[algoSettings.tierIdx].base;
+    const nscore = getNScore(currentPhrase.score ?? 0, diff);
+    return calculateWatchBack(nscore, C, base);
+  },[currentPhrase, diff, algoSettings]);
+
+  // 5. 实时推算选择熟练度后的预期结果 (Back & Score)
   useEffect(() => {
     if (phase === 'ANSWER' && currentPhrase && prof !== null) {
       const todayDays = Math.floor(Date.now() / 86400000);
@@ -135,15 +177,19 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
       setComputedScore(newScore);
       setComputedBack(calculateBack(nscore, C, base));
     }
-  },[phase, prof, diff, currentPhrase, algoSettings]);
+  }, [phase, prof, diff, currentPhrase, algoSettings]);
 
+  // 6. 键盘快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isEditing || isFinished || isAntiTouchActive || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       if (phase === 'QUESTION') {
-        if (e.code === 'Space' || e.key === 'Enter') { e.preventDefault(); handleShowAnswer(); }
+        if (e.code === 'Space' || e.key === 'Enter') {
+          e.preventDefault();
+          handleShowAnswer();
+        }
       } else if (phase === 'ANSWER') {
         if (e.code === 'Space' || e.key === 'Enter') {
           e.preventDefault();
@@ -180,6 +226,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     setIsEditing(false);
   },[currentPhrase, editForm, deck, onUpdateDeck]);
 
+  // --- 核心：完成卡片打分与排序 ---
   const handleFinishCard = useCallback((isWatch: boolean) => {
     if (!currentPhrase || isAntiTouchActive) return;
 
@@ -195,13 +242,13 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     let newScore = currentPhrase.score;
 
     if (isWatch) {
-      const nscore = getNScore(currentPhrase.score ?? 0, diff);
-      finalBack = customBack ?? calculateWatchBack(nscore, C, base);
+      finalBack = customBack ?? watchBackValue;
+      setSessionResults(prev => [...prev, { phrase: currentPhrase, prof: 'watch' }]);
     } else {
       if (prof === null) { setIsAntiTouchActive(false); return; }
       const res = calculateNextState(currentPhrase.score, prof, diff, gap, C, base, algoSettings.cap);
       newScore = res.newScore;
-      finalBack = customBack !== null ? customBack : calculateBack(res.nscore, C, base);
+      finalBack = customBack !== null ? customBack : computedBack;
 
       setStats(prev => ({
         count0_1: prev.count0_1 + (prof <= 1 ? 1 : 0),
@@ -228,7 +275,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
 
     const updatedPhrases = deck.phrases.map(p => p.id === activeId ? updatedPhrase : p);
     const currentGlobalMastery = updatedPhrases.reduce((acc, p) => acc + (p.mastery || 0), 0) / updatedPhrases.length;
-    setMasteryTrend(prev =>[...prev, { t: sessionDuration, v: currentGlobalMastery }]);
+    setMasteryTrend(prev => [...prev, { t: sessionDuration, v: currentGlobalMastery }]);
 
     onUpdateDeck({ ...deck, queue: newQueue, phrases: updatedPhrases });
 
@@ -238,7 +285,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     setProf(null);
     setCustomBack(null);
     setActiveId(newQueue.length > 0 ? newQueue[0] : null);
-  },[currentPhrase, isAntiTouchActive, algoSettings, diff, customBack, prof, deck, activeId, sessionDuration, onUpdateDeck]);
+  },[currentPhrase, isAntiTouchActive, algoSettings, diff, customBack, prof, deck, activeId, sessionDuration, onUpdateDeck, watchBackValue, computedBack]);
 
   const handleManualExit = () => {
     if (onSessionComplete) onSessionComplete(sessionDuration, stats);
@@ -267,18 +314,20 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
       </div>
     );
   };
+// src/components/StudySession.tsx (Part 2) 接着上文的代码
 
-  // ========== UI 渲染部分 ==========
+  // ========== UI 渲染逻辑 ==========
+  
   if (!currentPhrase) {
     const endMastery = masteryTrend.length > 0 ? masteryTrend[masteryTrend.length - 1].v : startMastery;
     const gain = endMastery - startMastery;
 
     return (
-      <div className="fixed inset-0 bg-slate-50 z-50 flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-300 overflow-y-auto">
+      <div className="fixed inset-0 bg-slate-50 z-50 flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-300 overflow-y-auto custom-scrollbar">
         <div className="max-w-2xl w-full bg-white rounded-3xl shadow-2xl p-8 flex flex-col space-y-6 my-8">
           <div className="text-center">
             <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4 text-emerald-600"><Trophy className="w-8 h-8" /></div>
-            <h2 className="text-3xl font-black text-slate-800">复习报告</h2>
+            <h2 className="text-3xl font-black text-slate-800">背诵结算</h2>
             <p className="text-slate-400 font-bold text-sm uppercase tracking-widest mt-1">{deck.name}</p>
           </div>
           
@@ -320,14 +369,19 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
             <div className="border-t border-slate-100 pt-6">
                <h3 className="text-sm font-black text-slate-800 mb-4 flex items-center gap-2"><ListOrdered className="w-4 h-4"/> 详细复盘 (Review Details)</h3>
                <div className="max-h-64 overflow-y-auto space-y-2 custom-scrollbar pr-2">
-                  {sessionResults.slice().sort((a,b) => a.prof - b.prof).map((res, i) => (
+                  {/* 按打分从低到高排序，观望按中间值算 */}
+                  {sessionResults.slice().sort((a,b) => {
+                      const scoreA = a.prof === 'watch' ? 2.5 : a.prof;
+                      const scoreB = b.prof === 'watch' ? 2.5 : b.prof;
+                      return scoreA - scoreB;
+                  }).map((res, i) => (
                       <div key={i} className="flex justify-between items-center p-4 bg-slate-50 rounded-xl border border-slate-100">
                           <div className="flex flex-col min-w-0 pr-4">
                               <span className="font-bold text-base text-slate-700 truncate">{res.phrase.chinese}</span>
                               <span className="text-sm font-medium text-slate-500 truncate">{res.phrase.english}</span>
                           </div>
-                          <div className={`px-3 py-1.5 rounded-lg text-sm font-black shrink-0 ${res.prof >= 4 ? 'bg-emerald-100 text-emerald-700' : res.prof >= 2 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
-                              {res.prof} 分
+                          <div className={`px-3 py-1.5 rounded-lg text-sm font-black shrink-0 ${res.prof === 'watch' ? 'bg-slate-200 text-slate-600' : res.prof >= 4 ? 'bg-emerald-100 text-emerald-700' : res.prof >= 2 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
+                              {res.prof === 'watch' ? '观望' : `${res.prof} 分`}
                           </div>
                       </div>
                   ))}
@@ -353,6 +407,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
 
   return (
     <div className="fixed inset-0 bg-slate-50 z-[100] flex flex-col h-full overflow-hidden">
+      
       {/* 顶栏 */}
       <div className="bg-white shadow-sm shrink-0 relative z-[60]">
         <div className="flex items-center justify-between px-3 py-2 gap-3 h-14">
@@ -366,6 +421,14 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
             <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden relative border border-slate-50">
               <div className="absolute top-0 left-0 h-full transition-all duration-700 ease-out" style={{ width: `${liveMasteryValue}%`, backgroundColor: getDynamicColor(liveMasteryValue) }}></div>
             </div>
+            <div className="flex justify-between items-start mt-1 leading-none">
+              <span className="text-[10px] font-black" style={{ color: getDynamicColor(liveMasteryValue) }}>{liveMasteryValue.toFixed(2)}%</span>
+              <span className="text-[10px] font-bold text-slate-400 flex items-center">
+                <span className="text-emerald-500">{stats.count4_5}</span>
+                <span className="text-slate-300 mx-0.5">/</span><span className="text-amber-500">{stats.count2_3}</span>
+                <span className="text-slate-300 mx-0.5">/</span><span className="text-rose-500">{stats.count0_1}</span>
+              </span>
+            </div>
           </div>
           
           <div className="flex gap-1 shrink-0 items-center">
@@ -377,7 +440,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Algorithm Settings</span>
                     <button onClick={()=>setShowAlgoMenu(false)}><X className="w-3 h-3 text-slate-400"/></button>
                   </div>
-                  <div className="p-4 border-b border-slate-100 max-h-[60vh] overflow-y-auto">
+                  <div className="p-4 border-b border-slate-100 max-h-[60vh] overflow-y-auto custom-scrollbar">
                     <label className="text-xs font-bold text-slate-600 block mb-2">学习节奏 (C & base)</label>
                     <div className="space-y-1 mb-4">
                       {ALGO_TIERS.map((tier, idx) => (
@@ -447,7 +510,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
 
                 {/* === 答案打分区 === */}
                 {phase === 'ANSWER' && (
-                  <div className="w-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300 pb-2 mt-auto">
+                  <div className="w-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300 pb-4 mt-auto">
                     <div className="text-center py-2 px-4 rounded-xl w-full mb-4">
                       <p className="text-3xl font-black text-indigo-600 leading-snug break-words max-w-full inline-block">
                         {renderFormattedText(answerText)}
@@ -456,7 +519,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
 
                     {currentPhrase.note && (
                       <div className="w-full bg-amber-50 p-4 rounded-xl border border-amber-100 text-left relative mb-8">
-                        <div className="absolute top-4 left-4"><span className="text-lg">💡</span></div>
+                        <div className="absolute top-4 left-4"><StickyNote className="w-4 h-4 text-amber-400" /></div>
                         <div className="pl-8 text-sm font-medium text-slate-700 whitespace-pre-wrap leading-relaxed break-words">
                           {renderFormattedText(cleanNote(currentPhrase.note))}
                         </div>
@@ -478,7 +541,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                         </div>
                       </div>
 
-                      {/* 熟练度 - 强制单行 */}
+                      {/* 熟练度 - 单行平铺 */}
                       <div>
                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 ml-1">熟练度评分 (Proficiency)</span>
                          <div className="grid grid-cols-6 gap-1.5 sm:gap-2">
@@ -495,52 +558,55 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                          </div>
                       </div>
 
-                      {/* 亮色后推面板与实时预测 */}
-                      {prof !== null && (
-                        <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 shadow-sm animate-in slide-in-from-bottom-2">
-                          <div className="flex justify-between items-center mb-4">
-                             <div className="flex flex-col">
-                               <span className="text-xs font-black text-indigo-900 uppercase tracking-widest flex items-center gap-1.5"><Settings2 size={14}/> 后推步数 (Back)</span>
-                               <div className="text-[10px] font-bold text-slate-500 mt-1 flex items-center gap-1">
-                                  <span>Score 预测:</span>
-                                  <span className="text-slate-400">{currentPhrase.score?.toFixed(2) ?? '0.00'}</span>
-                                  <ArrowRight size={10} className="text-slate-300"/>
-                                  <span className={`font-black ${computedScore >= (currentPhrase.score ?? 0) ? 'text-emerald-600' : 'text-rose-500'}`}>{computedScore.toFixed(2)}</span>
-                               </div>
-                             </div>
-                             <div className="flex items-center gap-2">
-                                <input type="number" min="1" 
-                                  value={customBack ?? computedBack} 
-                                  onChange={e => setCustomBack(Math.max(1, parseInt(e.target.value) || 1))} 
-                                  className="w-16 bg-white border border-indigo-200 rounded-lg p-1.5 text-center font-mono font-black text-indigo-600 text-sm focus:ring-2 ring-indigo-400 outline-none shadow-sm" 
-                                />
-                                {customBack !== null && (
-                                  <button onClick={() => setCustomBack(null)} className="p-1.5 text-slate-400 hover:text-indigo-600 bg-white rounded-md transition-colors shadow-sm border border-slate-200" title="恢复系统计算">
-                                    <RefreshCw size={14}/>
-                                  </button>
-                                )}
-                             </div>
-                          </div>
-                          <input type="range" min="0" max="1000" step="1" 
-                            value={mapBackToSlider(customBack ?? computedBack)} 
-                            onChange={e => setCustomBack(mapSliderToBack(parseInt(e.target.value)))}
-                            className="w-full h-1.5 bg-indigo-200/60 rounded-lg appearance-none cursor-pointer accent-indigo-600" 
-                          />
-                          <div className="flex justify-between text-[8px] font-black text-indigo-300 mt-2 px-1 tracking-widest uppercase">
-                            <span>1</span>
-                            <span>Log2 Scale</span>
-                            <span>100K+</span>
-                          </div>
+                      {/* 亮色后推面板与实时预测 (不管有没有选熟练度都存在) */}
+                      <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 shadow-sm animate-in slide-in-from-bottom-2">
+                        <div className="flex justify-between items-center mb-4">
+                            <div className="flex flex-col">
+                              <span className="text-xs font-black text-indigo-900 uppercase tracking-widest flex items-center gap-1.5"><Settings2 size={14}/> 后推步数 (Back)</span>
+                              <div className="text-[10px] font-bold text-slate-500 mt-1 flex items-center gap-1">
+                                <span>Score 预测:</span>
+                                <span className="text-slate-400">{currentPhrase.score?.toFixed(2) ?? '0.00'}</span>
+                                <ArrowRight size={10} className="text-slate-300"/>
+                                {/* 如果 prof没选就是观望预测，如果选了就是 computedScore */}
+                                <span className={`font-black ${prof !== null ? (computedScore >= (currentPhrase.score ?? 0) ? 'text-emerald-600' : 'text-rose-500') : 'text-indigo-500'}`}>
+                                  {prof !== null ? computedScore.toFixed(2) : (currentPhrase.score?.toFixed(2) ?? '0.00')}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input type="number" min="1" 
+                                value={customBack ?? (prof !== null ? computedBack : watchBackValue)} 
+                                onChange={e => setCustomBack(Math.max(1, parseInt(e.target.value) || 1))} 
+                                className="w-16 bg-white border border-indigo-200 rounded-lg p-1.5 text-center font-mono font-black text-indigo-600 text-sm focus:ring-2 ring-indigo-400 outline-none shadow-sm" 
+                              />
+                              {customBack !== null && (
+                                <button onClick={() => setCustomBack(null)} className="p-1.5 text-slate-400 hover:text-indigo-600 bg-white rounded-md transition-colors shadow-sm border border-slate-200" title="恢复系统计算">
+                                  <RefreshCw size={14}/>
+                                </button>
+                              )}
+                            </div>
                         </div>
-                      )}
+                        <input type="range" min="0" max="1000" step="1" 
+                          value={mapBackToSlider(customBack ?? (prof !== null ? computedBack : watchBackValue))} 
+                          onChange={e => setCustomBack(mapSliderToBack(parseInt(e.target.value)))}
+                          className="w-full h-1.5 bg-indigo-200/60 rounded-lg appearance-none cursor-pointer accent-indigo-600" 
+                        />
+                        <div className="flex justify-between text-[8px] font-black text-indigo-300 mt-2 px-1 tracking-widest uppercase">
+                          <span>1</span>
+                          <span>Log2 Scale</span>
+                          <span>100K+</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
+                
+                {/* 阻挡层 */}
                 {isAntiTouchActive && <div className="absolute inset-0 z-20 cursor-not-allowed"></div>}
               </div>
             )}
             
-            {/* 底部按钮区 */}
+            {/* 底部操作区 */}
             <div className="p-4 sm:p-5 bg-white border-t border-slate-100 shrink-0">
               {phase === 'QUESTION' ? (
                 <Button fullWidth onClick={handleShowAnswer} className="py-4 text-lg font-black shadow-lg shadow-indigo-100">查看答案 (Space)</Button>
@@ -569,7 +635,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
               if (!p) return null;
               const isCurrent = id === activeId;
               const badgeColor = getScoreBadgeColor(p.score);
-              const label = (p.score === undefined || p.score === 0) ? '新' : p.score > 0 ? `对${Math.ceil(p.score)}` : `错${Math.ceil(Math.abs(p.score))}`;
+              const label = getPhraseLabel(p.score);
               
               return (
                 <div key={id} className={`flex items-center justify-between text-sm py-2 px-3 rounded-lg border transition-all ${isCurrent ? 'bg-indigo-50 border-indigo-200 shadow-sm scale-[1.02]' : 'bg-white border-transparent hover:bg-slate-50 hover:border-slate-200'}`}>
