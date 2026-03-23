@@ -33,12 +33,7 @@ const ALGO_TIERS =[
 const ALGO_SETTINGS_KEY = 'recallflow_v2_algo_settings';
 
 // === 辅助函数 ===
-const getDynamicColor = (percent: number) => `hsl(${percent * 1.2}, 75%, 45%)`;
-const getScoreBadgeColor = (score: number | undefined) => {
-  if (score === undefined || score === 0) return '#94a3b8'; 
-  if (score > 0) return getDynamicColor(Math.min(100, 40 + score * 12)); 
-  return getDynamicColor(Math.max(0, 40 + score * 10)); 
-};
+
 const formatHeaderTime = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
 const formatFullTime = (seconds: number) => { 
   if (seconds <= 0) return '0s'; 
