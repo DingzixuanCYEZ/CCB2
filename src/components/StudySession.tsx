@@ -11,7 +11,7 @@ import {
 import { 
   calculateNextState, calculateBack, calculateWatchBack, 
   mapSliderToBack, mapBackToSlider, getNScore, EPS, calculateMastery,
-  getProficiencyLabel
+  getProficiencyLabel, getDynamicColor, getScoreBadgeColor, getPhraseLabel
 } from '../utils/algo';
 
 interface StudySessionProps {

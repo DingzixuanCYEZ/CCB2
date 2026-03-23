@@ -5,7 +5,7 @@ import { Deck, Phrase } from '../types';
 import { Button } from './Button';
 import { 
   ArrowLeft, Settings2, RefreshCw, Eye, ArrowRight, Clock, AlertCircle, 
-  Trophy, XCircle, ListOrdered, BarChart2, X 
+  Trophy, XCircle, ListOrdered, BarChart2, X, StickyNote
 } from 'lucide-react';
 import { 
   calculateNextState, calculateBack, calculateWatchBack, 
