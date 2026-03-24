@@ -1,18 +1,27 @@
-// src/App.tsx (Part 1)
-import { DeckEditor } from './components/DeckEditor';
-import { Importer } from './components/Importer';
-import { Database, PlusCircle } from 'lucide-react'; // 确保加上这几个图标
+// src/App.tsx 
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { AppView, Deck, Phrase, GlobalStats, Folder } from './types';
+// 1. 补全了函数逻辑需要的类型定义
+import { 
+  AppView, Deck, Phrase, GlobalStats, Folder, 
+  DeckSubject, ContentType, StudyMode 
+} from './types';
+
+// 2. 统一引入所有需要的组件
 import { StudySession } from './components/StudySession';
 import { DailyReviewSession } from './components/DailyReviewSession';
 import { ExamSession } from './components/ExamSession';
+import { DeckEditor } from './components/DeckEditor';
+import { Importer } from './components/Importer';
 import { Button } from './components/Button';
+
+// 3. 合并了所有的图标引入，删除了重复的 PlusCircle，确保没有冗余
 import { 
   PlusCircle, BookOpen, ArrowLeft, X, Clock, Edit, Trash2, CopyPlus, GitMerge,
   FolderPlus, Folder as FolderIcon, Home, ScrollText, Play, GraduationCap,
-  Flame, CheckCircle2, ChevronRight, Settings, FileText, Hash, Languages
+  Flame, CheckCircle2, ChevronRight, Settings, FileText, Hash, Languages, Database, Bug
 } from 'lucide-react';
+
 import { v4 as uuidv4 } from 'uuid';
 import { getRealmInfo, getPersistenceGrade } from './utils/realms';
 import { getScoreBadgeColor, getDynamicColor } from './utils/algo';
@@ -474,7 +483,10 @@ export const App: React.FC = () => {
                       );
                   }) : <span className="text-[9px] text-slate-300 italic">暂无内容</span>}
                 </div>
-
+		<div className="absolute top-4 right-4 flex gap-2 items-center">
+                    {pending > 0 && <div className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-md border-2 border-white animate-pulse">{pending} 待复习</div>}
+                    <button onClick={(e) => { e.stopPropagation(); setActiveDeckId(deck.id); setView(AppView.EDIT_DECK); }} className="p-1.5 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-indigo-600 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"><Edit className="w-4 h-4" /></button>
+                </div>
                 {pending > 0 && <div className="absolute top-4 right-4 bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-md border-2 border-white animate-pulse">{pending} 待复习</div>}
               </div>
             );
@@ -589,6 +601,48 @@ export const App: React.FC = () => {
           onTimeUpdate={handleTimeUpdate}
           onSessionComplete={(dur, counts, cultGain) => handleSessionComplete('daily_hub', dur, counts, cultGain, 'DAILY_REVIEW')}
         />
+      )}
+	{/* 单词本管理 */}
+      {activeDeckId && view === AppView.EDIT_DECK && (
+        <DeckEditor deck={decks.find(d => d.id === activeDeckId)!} onUpdateDeck={updateDeck} onAddDecks={(newDecks) => setDecks(prev => [...prev, ...newDecks])} onBack={() => setView(AppView.DASHBOARD)} />
+      )}
+
+      {/* 新建/导入模块 */}
+      {view === AppView.IMPORT && (
+        <Importer onImport={handleCreateDeck} onBack={() => setView(AppView.DASHBOARD)} />
+      )}
+
+      {/* 新建文件夹弹窗 */}
+      {showNewFolderModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full animate-in zoom-in-95">
+            <h3 className="text-lg font-black text-slate-800 mb-4">新建文件夹</h3>
+            <input autoFocus type="text" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold mb-4 focus:border-amber-500 outline-none" placeholder="输入文件夹名称..." />
+            <div className="flex gap-3">
+              <Button variant="ghost" fullWidth onClick={() => setShowNewFolderModal(false)}>取消</Button>
+              <Button fullWidth onClick={handleCreateFolder} className="bg-amber-500 hover:bg-amber-600 text-white font-black">创建</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 简易数据中心弹窗 (用于导出备份) */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full animate-in zoom-in-95">
+            <h3 className="text-lg font-black text-slate-800 mb-4">数据中心</h3>
+            <p className="text-xs text-slate-500 mb-6">所有的复习进度都保存在浏览器本地，请定期导出 JSON 备份以防丢失。</p>
+            <div className="space-y-3 mb-6">
+              <Button fullWidth variant="outline" onClick={() => {
+                const data = { version: 2, timestamp: Date.now(), decks, stats, folders };
+                const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = `CCB_V2_Backup_${new Date().toLocaleDateString()}.json`; a.click();
+              }}><Download className="w-4 h-4 mr-2"/> 导出存档数据</Button>
+            </div>
+            <Button fullWidth variant="ghost" onClick={() => setShowSettings(false)}>关闭</Button>
+          </div>
+        </div>
       )}
     </>
   );

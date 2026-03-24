@@ -2,22 +2,21 @@
 
 import React, { useState } from 'react';
 import { Button } from './Button';
-import { ArrowLeft, Languages, Info, Code, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Languages, Info, Code, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Phrase, DeckSubject, ContentType, StudyMode } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 interface ImporterProps {
-  // 注意：如果要在 App.tsx 接收 allowFreeze，请在 App.tsx 的 handleCreateDeck 中也加上这个参数
   onImport: (name: string, phrases: Phrase[], subject: DeckSubject, contentType?: ContentType, studyMode?: StudyMode, allowFreeze?: boolean) => void;
   onBack: () => void;
 }
 
 export const Importer: React.FC<ImporterProps> = ({ onImport, onBack }) => {
   const [deckName, setDeckName] = useState('');
-  const[subject, setSubject] = useState<DeckSubject>('English');
+  const [subject, setSubject] = useState<DeckSubject>('English');
   const [contentType, setContentType] = useState<ContentType>('PhraseSentence');
   const [studyMode, setStudyMode] = useState<StudyMode>('CN_EN');
-  const [allowFreeze, setAllowFreeze] = useState(true); // 新增：是否允许冻结
+  const [allowFreeze, setAllowFreeze] = useState(true);
   const [manualText, setManualText] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -190,7 +189,7 @@ export const Importer: React.FC<ImporterProps> = ({ onImport, onBack }) => {
           </div>
         )}
 
-        {/* === 2. 格式说明框 (高度还原你的截图) === */}
+        {/* === 2. 格式说明框 === */}
         <div className="bg-[#fff8f0] p-5 rounded-2xl border border-[#ffedd5] space-y-5">
            
            <div className="flex items-start gap-3 text-[#9a3412]">
@@ -237,7 +236,7 @@ export const Importer: React.FC<ImporterProps> = ({ onImport, onBack }) => {
           </div>
         )}
 
-        <Button onClick={handleManualImport} fullWidth className="py-4 shadow-xl text-lg font-black bg-slate-900 hover:bg-slate-800 text-white rounded-2xl">
+        <Button onClick={handleImport} fullWidth className="py-4 shadow-xl text-lg font-black bg-slate-900 hover:bg-slate-800 text-white rounded-2xl">
           导入并创建词本
         </Button>
 
