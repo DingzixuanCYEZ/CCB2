@@ -1,13 +1,13 @@
-// src/App.tsx 
+// src/App.tsx
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-// 1. 补全了函数逻辑需要的类型定义
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+// 1. 确保所有业务类型都已导入
 import { 
   AppView, Deck, Phrase, GlobalStats, Folder, 
   DeckSubject, ContentType, StudyMode 
 } from './types';
 
-// 2. 统一引入所有需要的组件
+// 2. 组件引入
 import { StudySession } from './components/StudySession';
 import { DailyReviewSession } from './components/DailyReviewSession';
 import { ExamSession } from './components/ExamSession';
@@ -15,12 +15,12 @@ import { DeckEditor } from './components/DeckEditor';
 import { Importer } from './components/Importer';
 import { Button } from './components/Button';
 
-// 3. 合并了所有的图标引入，删除了重复的 PlusCircle，确保没有冗余
+// 3. 图标引入 (已补全所有缺失的图标)
 import { 
   PlusCircle, BookOpen, ArrowLeft, X, Clock, Edit, Trash2, CopyPlus, GitMerge,
   FolderPlus, Folder as FolderIcon, Home, ScrollText, Play, GraduationCap,
-  Flame, CheckCircle2, ChevronRight, Settings, FileText, Hash, Languages, Database, Bug,
-  Download, Upload
+  Flame, CheckCircle2, ChevronRight, Settings, FileText, Hash, Languages, 
+  Database, Bug, Download, Upload, RotateCcw, AlertTriangle
 } from 'lucide-react';
 
 import { v4 as uuidv4 } from 'uuid';
