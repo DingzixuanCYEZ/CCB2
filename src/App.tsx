@@ -19,7 +19,8 @@ import { Button } from './components/Button';
 import { 
   PlusCircle, BookOpen, ArrowLeft, X, Clock, Edit, Trash2, CopyPlus, GitMerge,
   FolderPlus, Folder as FolderIcon, Home, ScrollText, Play, GraduationCap,
-  Flame, CheckCircle2, ChevronRight, Settings, FileText, Hash, Languages, Database, Bug
+  Flame, CheckCircle2, ChevronRight, Settings, FileText, Hash, Languages, Database, Bug,
+  Download, Upload
 } from 'lucide-react';
 
 import { v4 as uuidv4 } from 'uuid';
