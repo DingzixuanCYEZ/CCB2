@@ -438,8 +438,19 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     );
   }
 
-  // 2. 正常复习状态
-  if (!currentPhrase) return null; // 兜底防崩溃
+  if (!currentPhrase) {
+    return (
+      <div className="fixed inset-0 bg-white z-[200] flex flex-col items-center justify-center p-6">
+        <AlertCircle className="w-16 h-16 text-rose-500 mb-4" />
+        <h2 className="text-xl font-black text-slate-800 mb-2">数据加载异常</h2>
+        <p className="text-slate-400 text-sm mb-6 text-center">
+          当前词组本队列可能为空，或 ID 索引失效。<br/>
+          (ID: {activeId || 'null'}, 词条总数: {deck.phrases.length})
+        </p>
+        <Button onClick={onExit}>返回主页</Button>
+      </div>
+    );
+  }
 
   const liveMasteryValue = masteryTrend.length > 0 ? masteryTrend[masteryTrend.length - 1].v : startMastery;
   const isEnToCn = deck.studyMode === 'EN_CN';
