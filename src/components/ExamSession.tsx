@@ -297,7 +297,7 @@ export const ExamSession: React.FC<ExamSessionProps> = ({
   if (questions.length === 0) return <div className="fixed inset-0 bg-white flex items-center justify-center font-black text-slate-400">准备试卷中...</div>;
 // src/components/ExamSession.tsx (Part 2) 接着上文
 
-  const currentPhrase = questions[currentIndex];
+
 
   // ========== UI 渲染逻辑 ==========
 
