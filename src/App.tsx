@@ -1,5 +1,7 @@
 // src/App.tsx (Part 1)
-
+import { DeckEditor } from './components/DeckEditor';
+import { Importer } from './components/Importer';
+import { Database, PlusCircle } from 'lucide-react'; // 确保加上这几个图标
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppView, Deck, Phrase, GlobalStats, Folder } from './types';
 import { StudySession } from './components/StudySession';
@@ -42,7 +44,29 @@ export const App: React.FC = () => {
   // 每日复习调度状态
   const[dailyReviewSetup, setDailyReviewSetup] = useState(false);
   const [selectedDeckIds, setSelectedDeckIds] = useState<Set<string>>(new Set());
+// 弹窗状态
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const[showSettings, setShowSettings] = useState(false);
 
+  // 建文件夹逻辑
+  const handleCreateFolder = () => {
+    if(!newFolderName.trim()) return;
+    setFolders(prev =>[...prev, { id: uuidv4(), name: newFolderName, createdAt: Date.now(), parentId: currentFolderId || undefined }]);
+    setNewFolderName('');
+    setShowNewFolderModal(false);
+  };
+
+  // 建单词本逻辑
+  const handleCreateDeck = (name: string, phrases: Phrase[], subject: DeckSubject, contentType: ContentType = 'PhraseSentence', studyMode: StudyMode = 'CN_EN') => {
+    const newDeck: Deck = { 
+      id: uuidv4(), name, subject, contentType, studyMode, phrases, queue: phrases.map(p => p.id), 
+      stats: { totalStudyTimeSeconds: 0, totalReviewCount: 0 }, sessionHistory: [], 
+      folderId: currentFolderId || undefined 
+    }; 
+    setDecks(prev =>[...prev, newDeck]); 
+    setView(AppView.DASHBOARD); 
+  };
   // 考试配置状态
   const [showExamSetup, setShowExamSetup] = useState(false);
   const [examConfig, setExamConfig] = useState<{ count: number; candidateIds?: string[] } | null>(null);
@@ -297,9 +321,10 @@ export const App: React.FC = () => {
             </div>
           </div>
           <div className="flex gap-3 flex-wrap">
-            <Button variant="outline" className="text-sm font-bold border-slate-200 text-slate-700 bg-white"><Settings className="w-4 h-4 mr-1"/> 数据中心</Button>
-            <Button variant="outline" className="text-sm font-bold border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100"><FolderPlus className="w-4 h-4 mr-1" /> 建文件夹</Button>
-            <Button onClick={() => setDailyReviewSetup(true)} className="px-5 py-2 text-sm font-black shadow-lg shadow-rose-200 bg-rose-500 hover:bg-rose-600"><Flame className="w-4 h-4 mr-2" /> 每日大盘复习</Button>
+            <Button onClick={() => setShowSettings(true)} variant="outline" className="text-sm font-bold border-slate-200 text-slate-700 bg-white"><Database className="w-4 h-4 mr-1"/> 数据中心</Button>
+            <Button onClick={() => setShowNewFolderModal(true)} variant="outline" className="text-sm font-bold border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100"><FolderPlus className="w-4 h-4 mr-1" /> 建文件夹</Button>
+            <Button onClick={() => setView(AppView.IMPORT)} className="px-5 py-2 text-sm font-black shadow-lg shadow-indigo-100 bg-indigo-600 text-white hover:bg-indigo-700"><PlusCircle className="w-4 h-4 mr-2" /> 新建词本</Button>
+            <Button onClick={() => setDailyReviewSetup(true)} className="px-5 py-2 text-sm font-black shadow-lg shadow-rose-200 bg-rose-500 hover:bg-rose-600"><Flame className="w-4 h-4 mr-2" /> 每日大盘</Button>
           </div>
         </div>
 
