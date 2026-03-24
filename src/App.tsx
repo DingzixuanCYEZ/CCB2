@@ -393,88 +393,148 @@ export const App: React.FC = () => {
           </div>
         )}
           
+        {/* 修为大盘 - 深度视觉重构 (找回大气感) */}
         {currentFolderId === null && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* 英语修为卡片 */}
             {(() => {
-                const metrics = (subj: 'English' | 'Chinese') => {
+                const getSubjectData = (subj: 'English' | 'Chinese') => {
                     const relevantDecks = decks.filter(d => d.subject === subj);
                     const todayActs = stats.daily.activities?.filter(a => a.deckSubject === subj) || [];
-                    const totalTime = relevantDecks.reduce((acc, d) => acc + (d.stats?.totalStudyTimeSeconds || 0), 0);
+                    
                     const todayTime = todayActs.reduce((acc, a) => acc + a.durationSeconds, 0);
+                    const totalTime = relevantDecks.reduce((acc, d) => acc + (d.stats?.totalStudyTimeSeconds || 0), 0);
                     const totalReviews = relevantDecks.reduce((acc, d) => acc + (d.stats?.totalReviewCount || 0), 0);
-                    // 精确计算累计正确（即 prof >= 4 的次数，或者 V1 的累计正确）
                     const totalCorrect = (relevantDecks.reduce((acc, d) => {
                         return acc + (d.sessionHistory?.reduce((s, log) => s + (log.count4_5 || 0), 0) || 0);
                     }, 0));
-                    return { todayTime, totalTime, totalReviews, totalCorrect };
+
+                    // 坚持度计算逻辑
+                    const pData = stats.persistence?.[subj] || { baseScore: 0 };
+                    const dailyCount = todayActs.reduce((sum, a) => sum + a.count, 0);
+                    const pScore = pData.baseScore + 100 * Math.log(1 + dailyCount / 100);
+                    const pGrade = getPersistenceGrade(pScore);
+
+                    const realm = getRealmInfo(stats.subjectStats[subj], subj);
+
+                    return { todayTime, totalTime, totalReviews, totalCorrect, pScore, pGrade, realm };
                 };
 
-                const en = metrics('English');
-                const cn = metrics('Chinese');
+                const en = getSubjectData('English');
+                const cn = getSubjectData('Chinese');
 
                 return (
                   <>
-                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 relative overflow-hidden group">
-                      {/* 背景装饰图标 */}
-                      <Languages className="absolute -right-4 -top-4 w-32 h-32 text-indigo-500 opacity-[0.03] rotate-12 group-hover:scale-110 transition-transform duration-700" />
+                    {/* 英语卡片 */}
+                    <div className="bg-white p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 relative overflow-hidden group">
+                      {/* 背景巨型水印 - 找回大气感 */}
+                      <Languages className="absolute -right-6 -top-6 w-48 h-48 text-indigo-500 opacity-[0.04] rotate-12 group-hover:rotate-0 transition-transform duration-1000" />
                       
-                      <div className="relative z-10">
-                        <div className="flex items-baseline justify-between mb-2">
-                          <span className="text-slate-400 font-bold uppercase text-xs tracking-wider">英语修为 (ENGLISH)</span>
+                      <div className="relative z-10 space-y-8">
+                        <div>
+                          <div className="text-slate-400 font-black uppercase text-xs tracking-[0.2em] mb-1">英语修为 (ENGLISH)</div>
+                          <div className="text-6xl font-black text-indigo-600 tracking-tighter tabular-nums">{stats.subjectStats.English.toFixed(1)}</div>
                         </div>
-                        <div className="text-5xl font-black text-indigo-600 mb-6 tracking-tighter">{stats.subjectStats.English.toFixed(1)}</div>
-                        
-                        <div className="mb-6">
-                          <div className="flex justify-between items-end mb-2">
+
+                        {/* 坚持度面板 (PERSISTENCE) - 重点找回 */}
+                        <div className="space-y-2">
+                           <div className="flex justify-between items-end">
+                             <div className="flex items-center gap-1.5 text-orange-500 font-black text-[10px] uppercase tracking-widest">
+                                <Flame className="w-3.5 h-3.5 fill-current" /> 坚持 (Persistence)
+                             </div>
+                             <div className={`text-xs font-black ${en.pGrade.color}`}>
+                                {en.pGrade.grade} <span className="text-slate-300 font-bold ml-1">({Math.round(en.pScore)})</span>
+                             </div>
+                           </div>
+                           <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden p-0.5">
+                              <div className="h-full bg-gradient-to-r from-orange-400 to-orange-600 rounded-full transition-all duration-1000" style={{ width: `${en.pGrade.progress * 100}%` }}></div>
+                           </div>
+                        </div>
+
+                        {/* 境界进度条 (加厚版) */}
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-end">
                             <div>
-                                <div className={`text-base font-black ${englishRealm.color}`}>{englishRealm.name.split('·')[0]}</div>
-                                <div className="text-[10px] text-slate-400 font-bold uppercase">{englishRealm.name.split('·')[1] || "凡人境"}</div>
+                                <div className={`text-lg font-black ${en.realm.color}`}>{en.realm.name.split('·')[0]}</div>
+                                <div className="text-[11px] text-slate-400 font-bold uppercase tracking-widest">{en.realm.name.split('·')[1] || "凡人境界"}</div>
                             </div>
-                            <span className="text-[10px] text-slate-400 font-bold">距下阶还差 {englishRealm.remain}</span>
+                            <div className="text-right">
+                                <span className="text-[10px] text-slate-400 font-black block uppercase mb-0.5">距下阶还差</span>
+                                <span className="text-sm font-black text-slate-600 tabular-nums">{en.realm.remain}</span>
+                            </div>
                           </div>
-                          <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className={`h-full transition-all duration-1000 ${englishRealm.bg.replace('50', '500')}`} style={{ width: `${englishRealm.percent}%` }}></div>
+                          <div className="w-full h-3.5 bg-slate-100 rounded-full overflow-hidden p-1 shadow-inner">
+                            <div 
+                                className={`h-full rounded-full transition-all duration-1000 ease-out relative ${en.realm.color.replace('text-', 'bg-').replace('600', '500')}`} 
+                                style={{ width: `${en.realm.percent}%` }}
+                            >
+                                <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                            </div>
                           </div>
                         </div>
 
                         {/* 四宫格数据统计 */}
-                        <div className="grid grid-cols-2 gap-y-4 gap-x-8 border-t border-slate-50 pt-6">
-                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">今日时长</span><span className="text-sm font-bold text-slate-700">{formatFullTime(en.todayTime)}</span></div>
-                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">累计时长</span><span className="text-sm font-bold text-slate-700">{formatFullTime(en.totalTime)}</span></div>
-                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">总复习数</span><span className="text-sm font-bold text-slate-700">{en.totalReviews}</span></div>
-                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">累计优秀</span><span className="text-sm font-bold text-emerald-600">{en.totalCorrect}</span></div>
+                        <div className="grid grid-cols-2 gap-y-6 gap-x-12 border-t border-slate-50 pt-8">
+                            <div className="space-y-1"><span className="text-[10px] text-slate-300 font-black uppercase block tracking-wider">今日时长</span><span className="text-base font-black text-slate-700 tabular-nums">{formatFullTime(en.todayTime)}</span></div>
+                            <div className="space-y-1"><span className="text-[10px] text-slate-300 font-black uppercase block tracking-wider">累计时长</span><span className="text-base font-black text-slate-700 tabular-nums">{formatFullTime(en.totalTime)}</span></div>
+                            <div className="space-y-1"><span className="text-[10px] text-slate-300 font-black uppercase block tracking-wider">交互次数</span><span className="text-base font-black text-slate-700 tabular-nums">{en.totalReviews}</span></div>
+                            <div className="space-y-1"><span className="text-[10px] text-slate-300 font-black uppercase block tracking-wider">累计优秀</span><span className="text-base font-black text-emerald-600 tabular-nums">{en.totalCorrect}</span></div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 relative overflow-hidden group">
-                      <ScrollText className="absolute -right-4 -top-4 w-32 h-32 text-emerald-500 opacity-[0.03] -rotate-12 group-hover:scale-110 transition-transform duration-700" />
+                    {/* 语文卡片 */}
+                    <div className="bg-white p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 relative overflow-hidden group">
+                      <ScrollText className="absolute -right-6 -top-6 w-48 h-48 text-emerald-500 opacity-[0.04] -rotate-12 group-hover:rotate-0 transition-transform duration-1000" />
                       
-                      <div className="relative z-10">
-                        <div className="flex items-baseline justify-between mb-2">
-                          <span className="text-slate-400 font-bold uppercase text-xs tracking-wider">语文品阶 (CHINESE)</span>
+                      <div className="relative z-10 space-y-8">
+                        <div>
+                          <div className="text-slate-400 font-black uppercase text-xs tracking-[0.2em] mb-1">语文品阶 (CHINESE)</div>
+                          <div className="text-6xl font-black text-emerald-600 tracking-tighter tabular-nums">{stats.subjectStats.Chinese.toFixed(1)}</div>
                         </div>
-                        <div className="text-5xl font-black text-emerald-600 mb-6 tracking-tighter">{stats.subjectStats.Chinese.toFixed(1)}</div>
-                        
-                        <div className="mb-6">
-                          <div className="flex justify-between items-end mb-2">
+
+                        {/* 坚持度面板 (PERSISTENCE) */}
+                        <div className="space-y-2">
+                           <div className="flex justify-between items-end">
+                             <div className="flex items-center gap-1.5 text-orange-500 font-black text-[10px] uppercase tracking-widest">
+                                <Flame className="w-3.5 h-3.5 fill-current" /> 坚持 (Persistence)
+                             </div>
+                             <div className={`text-xs font-black ${cn.pGrade.color}`}>
+                                {cn.pGrade.grade} <span className="text-slate-300 font-bold ml-1">({Math.round(cn.pScore)})</span>
+                             </div>
+                           </div>
+                           <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden p-0.5">
+                              <div className="h-full bg-gradient-to-r from-orange-400 to-orange-600 rounded-full transition-all duration-1000" style={{ width: `${cn.pGrade.progress * 100}%` }}></div>
+                           </div>
+                        </div>
+
+                        {/* 品阶进度条 (加厚版) */}
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-end">
                             <div>
-                                <div className={`text-base font-black ${chineseRealm.color}`}>{chineseRealm.name.split('·')[0]}</div>
-                                <div className="text-[10px] text-slate-400 font-bold uppercase">{chineseRealm.name.split('·')[1] || "入门"}</div>
+                                <div className={`text-lg font-black ${cn.realm.color}`}>{cn.realm.name.split('·')[0]}</div>
+                                <div className="text-[11px] text-slate-400 font-bold uppercase tracking-widest">{cn.realm.name.split('·')[1] || "入门品阶"}</div>
                             </div>
-                            <span className="text-[10px] text-slate-400 font-bold">距下阶还差 {chineseRealm.remain}</span>
+                            <div className="text-right">
+                                <span className="text-[10px] text-slate-300 font-black block uppercase mb-0.5">距下阶还差</span>
+                                <span className="text-sm font-black text-slate-600 tabular-nums">{cn.realm.remain}</span>
+                            </div>
                           </div>
-                          <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className={`h-full transition-all duration-1000 ${chineseRealm.bg.replace('50', '500')}`} style={{ width: `${chineseRealm.percent}%` }}></div>
+                          <div className="w-full h-3.5 bg-slate-100 rounded-full overflow-hidden p-1 shadow-inner">
+                            <div 
+                                className={`h-full rounded-full transition-all duration-1000 ease-out relative ${cn.realm.color.replace('text-', 'bg-').replace('600', '500')}`} 
+                                style={{ width: `${cn.realm.percent}%` }}
+                            >
+                                <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                            </div>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-y-4 gap-x-8 border-t border-slate-50 pt-6">
-                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">今日时长</span><span className="text-sm font-bold text-slate-700">{formatFullTime(cn.todayTime)}</span></div>
-                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">累计时长</span><span className="text-sm font-bold text-slate-700">{formatFullTime(cn.totalTime)}</span></div>
-                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">总复习数</span><span className="text-sm font-bold text-slate-700">{cn.totalReviews}</span></div>
-                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">累计优秀</span><span className="text-sm font-bold text-emerald-600">{cn.totalCorrect}</span></div>
+                        <div className="grid grid-cols-2 gap-y-6 gap-x-12 border-t border-slate-50 pt-8">
+                            <div className="space-y-1"><span className="text-[10px] text-slate-300 font-black uppercase block tracking-wider">今日时长</span><span className="text-base font-black text-slate-700 tabular-nums">{formatFullTime(cn.todayTime)}</span></div>
+                            <div className="space-y-1"><span className="text-[10px] text-slate-300 font-black uppercase block tracking-wider">累计时长</span><span className="text-base font-black text-slate-700 tabular-nums">{formatFullTime(cn.totalTime)}</span></div>
+                            <div className="space-y-1"><span className="text-[10px] text-slate-300 font-black uppercase block tracking-wider">交互次数</span><span className="text-base font-black text-slate-700 tabular-nums">{cn.totalReviews}</span></div>
+                            <div className="space-y-1"><span className="text-[10px] text-slate-300 font-black uppercase block tracking-wider">累计优秀</span><span className="text-base font-black text-emerald-600 tabular-nums">{cn.totalCorrect}</span></div>
                         </div>
                       </div>
                     </div>
