@@ -7,7 +7,7 @@ import {
   ArrowLeft, Trash2, Save, Plus, X, Search, Edit2, FileText, Check, 
   History, Clock, GraduationCap, BookOpen, Shuffle, BarChart3, GripVertical, 
   Dices, Settings, ListOrdered, Scale, Hash, Split, CheckCircle2, RotateCcw, 
-  ArrowRightLeft, AlignJustify 
+  ArrowRightLeft, AlignJustify, TrendingUp, Languages
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { getDynamicColor, getScoreBadgeColor } from '../utils/algo';
