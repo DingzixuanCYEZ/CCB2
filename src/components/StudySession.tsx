@@ -59,7 +59,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
   const [isFinished, setIsFinished] = useState(false);
   
   const[algoSettings, setAlgoSettings] = useState(() => {
-    try { const saved = localStorage.getItem(ALGO_SETTINGS_KEY); return saved ? JSON.parse(saved) : { tierIdx: 2, cap: 100, timeLimit: 10 }; } 
+    try { const saved = localStorage.getItem(ALGO_SETTINGS_KEY); return saved ? JSON.parse(saved) : { tierIdx: 2, cap: 100, timeLimit: 10, allowFreeze: true }; } 
     catch { return { tierIdx: 2, cap: 100, timeLimit: 10 }; }
   });
 
@@ -240,8 +240,16 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     };
 
     const newQueue = deck.queue.filter(id => id !== activeId);
-    const insertIdx = Math.min(finalBack, newQueue.length);
-    newQueue.splice(insertIdx, 0, activeId!);
+    
+    // 如果允许冻结，直接插在队尾；如果不允许冻结，超出队列长度的直接出列（通关）
+    if (algoSettings.allowFreeze) {
+      const insertIdx = Math.min(finalBack, newQueue.length);
+      newQueue.splice(insertIdx, 0, activeId!);
+    } else {
+      if (finalBack <= newQueue.length) {
+        newQueue.splice(finalBack, 0, activeId!);
+      }
+    }
 
     const updatedPhrases = deck.phrases.map(p => p.id === activeId ? updatedPhrase : p);
     const currentGlobalMastery = updatedPhrases.reduce((acc, p) => acc + (p.mastery || 0), 0) / updatedPhrases.length;
@@ -438,6 +446,22 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                         </button>
                       ))}
                     </div>
+
+                    {/* === 这是新插入的冻结开关 === */}
+                    <div className="mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <label className="flex items-center justify-between cursor-pointer group">
+                        <div>
+                          <div className="text-xs font-bold text-slate-700 flex items-center gap-2">允许词条冻结 {algoSettings.allowFreeze && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500"/>}</div>
+                          <div className="text-[9px] font-bold text-slate-400 mt-0.5">后推超出队列时，将其冻结在队尾</div>
+                        </div>
+                        <div className={`w-10 h-5 rounded-full transition-colors relative shadow-inner ${algoSettings.allowFreeze ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                           <div className={`absolute top-1 w-3 h-3 rounded-full bg-white shadow transition-transform ${algoSettings.allowFreeze ? 'left-6' : 'left-1'}`}></div>
+                        </div>
+                        <input type="checkbox" checked={algoSettings.allowFreeze} onChange={e => setAlgoSettings({...algoSettings, allowFreeze: e.target.checked})} className="hidden" />
+                      </label>
+                    </div>
+                    {/* ============================ */}
+
                     <label className="text-xs font-bold text-slate-600 block mb-2">Cap (每日复习容量上限)</label>
                     <input type="number" min="10" value={algoSettings.cap} onChange={(e) => setAlgoSettings({ ...algoSettings, cap: Math.max(10, parseInt(e.target.value) || 100) })} className="w-full p-2 border border-slate-200 rounded-lg text-sm font-black outline-none focus:border-indigo-500 mb-4" />
                     <label className="text-xs font-bold text-slate-600 block mb-2">题目限时 (秒，0为不限)</label>

@@ -2,22 +2,21 @@
 
 import React, { useState } from 'react';
 import { Button } from './Button';
-import { ArrowLeft, Languages, Info, Code, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Languages, Info, Code, AlertCircle } from 'lucide-react';
 import { Phrase, DeckSubject, ContentType, StudyMode } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 interface ImporterProps {
-  onImport: (name: string, phrases: Phrase[], subject: DeckSubject, contentType?: ContentType, studyMode?: StudyMode, allowFreeze?: boolean) => void;
+  onImport: (name: string, phrases: Phrase[], subject: DeckSubject, contentType?: ContentType, studyMode?: StudyMode) => void;
   onBack: () => void;
 }
 
 export const Importer: React.FC<ImporterProps> = ({ onImport, onBack }) => {
   const [deckName, setDeckName] = useState('');
-  const [subject, setSubject] = useState<DeckSubject>('English');
+  const[subject, setSubject] = useState<DeckSubject>('English');
   const [contentType, setContentType] = useState<ContentType>('PhraseSentence');
   const [studyMode, setStudyMode] = useState<StudyMode>('CN_EN');
-  const [allowFreeze, setAllowFreeze] = useState(true);
-  const [manualText, setManualText] = useState('');
+  const[manualText, setManualText] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const handleImport = () => {
@@ -38,14 +37,14 @@ export const Importer: React.FC<ImporterProps> = ({ onImport, onBack }) => {
        const english = parts[1];
        const noteRaw = parts[2] || '';
        
-       // 进度解析：正数为连对，负数为连错
+       // 进度解析：正分为连对，负分为连错
        let score: number | undefined = undefined;
        let totalWrong = 0;
        if (parts.length >= 4 && parts[3] !== '') {
-           const val = parseInt(parts[3]);
+           const val = parseFloat(parts[3]);
            if (!isNaN(val) && val !== 0) {
                score = val;
-               if (val < 0) totalWrong = Math.abs(val);
+               if (val < 0) totalWrong = Math.abs(Math.ceil(val));
            }
        }
 
@@ -90,12 +89,12 @@ export const Importer: React.FC<ImporterProps> = ({ onImport, onBack }) => {
         diff: 2.5,              // 默认记忆难度
         back: 0,                // 初始 back 为 0，立马进入复习队列
         date: today,
-        totalReviews: item.score ? Math.abs(item.score) : 0,
+        totalReviews: item.score ? Math.abs(Math.ceil(item.score)) : 0,
         totalWrong: item.totalWrong,
         mastery: 0
     }));
 
-    onImport(deckName, phrases, subject, contentType, studyMode, allowFreeze);
+    onImport(deckName, phrases, subject, contentType, studyMode);
   };
 
   return (
@@ -106,8 +105,8 @@ export const Importer: React.FC<ImporterProps> = ({ onImport, onBack }) => {
           <ArrowLeft className="w-5 h-5 text-slate-600" />
         </button>
         <div>
-          <h2 className="text-2xl font-black text-slate-800 leading-tight">新建词组本</h2>
-          <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">Manual Import</p>
+          <h2 className="text-2xl font-black text-slate-800 leading-tight">新建词库</h2>
+          <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">Manual Importer</p>
         </div>
       </div>
 
@@ -116,7 +115,7 @@ export const Importer: React.FC<ImporterProps> = ({ onImport, onBack }) => {
         {/* === 1. 基础设置 === */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div>
-            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">词组本名称 Name</label>
+            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">词库名称 Name</label>
             <input 
               type="text" 
               value={deckName} 
@@ -148,48 +147,18 @@ export const Importer: React.FC<ImporterProps> = ({ onImport, onBack }) => {
              </div>
              
              {/* 英语特有：背诵模式 */}
-             {subject === 'English' ? (
+             {subject === 'English' && (
                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">背诵模式 Mode</label>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">默认题型 Mode</label>
                     <div className="flex bg-slate-50 p-1.5 rounded-xl border border-slate-100">
                         <button onClick={()=>setStudyMode('CN_EN')} className={`flex-1 py-2 text-sm font-black rounded-lg transition-all ${studyMode==='CN_EN'?'bg-white shadow-sm text-indigo-600':'text-slate-400 hover:text-slate-600'}`}>中 → 英</button>
                         <button onClick={()=>setStudyMode('EN_CN')} className={`flex-1 py-2 text-sm font-black rounded-lg transition-all ${studyMode==='EN_CN'?'bg-white shadow-sm text-indigo-600':'text-slate-400 hover:text-slate-600'}`}>英 → 中</button>
                     </div>
                  </div>
-             ) : (
-                /* 语文特有：允许冻结开关 */
-                 <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">学习选择 Options</label>
-                    <label className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
-                      <div>
-                        <div className="text-sm font-black text-slate-700">允许词条冻结</div>
-                        <div className="text-[10px] font-bold text-slate-400 mt-0.5">后推超出队列时，将其冻结在队尾</div>
-                      </div>
-                      <div className={`w-12 h-6 rounded-full transition-colors relative shadow-inner ${allowFreeze ? 'bg-emerald-500' : 'bg-slate-300'}`}>
-                         <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${allowFreeze ? 'left-7' : 'left-1'}`}></div>
-                      </div>
-                    </label>
-                 </div>
              )}
         </div>
 
-        {/* 英语时的允许冻结开关（单列） */}
-        {subject === 'English' && (
-          <div>
-            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">学习选择 Options</label>
-            <label className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors max-w-sm">
-              <div>
-                <div className="text-sm font-black text-slate-700 flex items-center gap-2">允许词条冻结 {allowFreeze && <CheckCircle2 className="w-4 h-4 text-emerald-500"/>}</div>
-                <div className="text-[10px] font-bold text-slate-400 mt-0.5">后推超出队列时，将其冻结在队尾</div>
-              </div>
-              <div className={`w-12 h-6 rounded-full transition-colors relative shadow-inner ${allowFreeze ? 'bg-emerald-500' : 'bg-slate-300'}`}>
-                 <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${allowFreeze ? 'left-7' : 'left-1'}`}></div>
-              </div>
-            </label>
-          </div>
-        )}
-
-        {/* === 2. 格式说明框 === */}
+        {/* === 2. 格式说明框 (高度还原你的截图) === */}
         <div className="bg-[#fff8f0] p-5 rounded-2xl border border-[#ffedd5] space-y-5">
            
            <div className="flex items-start gap-3 text-[#9a3412]">
@@ -223,7 +192,7 @@ export const Importer: React.FC<ImporterProps> = ({ onImport, onBack }) => {
           <textarea 
             value={manualText} 
             onChange={(e) => setManualText(e.target.value)} 
-            placeholder={`在此处粘贴内容...\n\n示例：\n你好 | Hello\n复杂的 | Complex | 笔记第一行\\n笔记第二行 | 2 | 1`} 
+            placeholder={`在此处粘贴内容...\n\n示例：\n你好 | Hello\n复杂的 | Complex | 笔记第一行\\n笔记第二行 | 2.5 | 1`} 
             className="w-full h-72 px-5 py-4 border-2 border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono text-sm shadow-inner leading-relaxed text-slate-700 bg-slate-50 placeholder:text-slate-300 transition-all" 
             spellCheck={false}
           />
@@ -237,7 +206,7 @@ export const Importer: React.FC<ImporterProps> = ({ onImport, onBack }) => {
         )}
 
         <Button onClick={handleImport} fullWidth className="py-4 shadow-xl text-lg font-black bg-slate-900 hover:bg-slate-800 text-white rounded-2xl">
-          导入并创建词本
+          导入并创建词库
         </Button>
 
       </div>

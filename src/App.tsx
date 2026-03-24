@@ -57,8 +57,36 @@ export const App: React.FC = () => {
 // 弹窗状态
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
-  const[showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+// 数据中心弹窗状态
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [showGlobalProgressResetConfirm, setShowGlobalProgressResetConfirm] = useState(false);
+  const [progressResetInput, setProgressResetInput] = useState('');
+  const[showFactoryResetConfirm, setShowFactoryResetConfirm] = useState(false);
+  const [factoryResetInput, setFactoryResetInput] = useState('');
+// 全局重置进度
+  const handleGlobalProgressReset = () => {
+    if (progressResetInput !== 'RESET') return;
+    const today = Math.floor(Date.now() / 86400000);
+    setDecks(prev => prev.map(deck => ({
+        ...deck,
+        phrases: deck.phrases.map(p => ({ ...p, score: undefined, diff: 2.5, back: 0, date: today, mastery: 0, totalReviews: 0, totalWrong: 0, lastReviewedAt: undefined })),
+        stats: { totalStudyTimeSeconds: 0, totalReviewCount: 0 },
+        sessionHistory:[]
+    })));
+    setStats(prev => ({ ...prev, totalReviewCount: 0, subjectStats: { English: 0, Chinese: 0 }, daily: { ...prev.daily, reviewCount: 0, count0_1: 0, count2_3: 0, count4_5: 0, activities:[] } }));
+    setShowGlobalProgressResetConfirm(false); setProgressResetInput(''); setShowSettings(false);
+  };
 
+  // 彻底格式化
+  const handleFactoryReset = () => {
+    if (factoryResetInput !== 'DELETE') return;
+    setDecks([]); setFolders([]);
+    setStats(prev => ({ ...prev, totalReviewCount: 0, subjectStats: { English: 0, Chinese: 0 }, daily: { ...prev.daily, reviewCount: 0, count0_1: 0, count2_3: 0, count4_5: 0, activities:[] } }));
+    localStorage.clear();
+    setShowFactoryResetConfirm(false); setFactoryResetInput(''); setShowSettings(false);
+  };
   // 建文件夹逻辑
   const handleCreateFolder = () => {
     if(!newFolderName.trim()) return;
@@ -488,7 +516,6 @@ export const App: React.FC = () => {
                     {pending > 0 && <div className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-md border-2 border-white animate-pulse">{pending} 待复习</div>}
                     <button onClick={(e) => { e.stopPropagation(); setActiveDeckId(deck.id); setView(AppView.EDIT_DECK); }} className="p-1.5 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-indigo-600 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"><Edit className="w-4 h-4" /></button>
                 </div>
-                {pending > 0 && <div className="absolute top-4 right-4 bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-md border-2 border-white animate-pulse">{pending} 待复习</div>}
               </div>
             );
           })}
@@ -627,21 +654,101 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* 简易数据中心弹窗 (用于导出备份) */}
+     {/* 完整数据中心弹窗 */}
       {showSettings && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full animate-in zoom-in-95">
-            <h3 className="text-lg font-black text-slate-800 mb-4">数据中心</h3>
-            <p className="text-xs text-slate-500 mb-6">所有的复习进度都保存在浏览器本地，请定期导出 JSON 备份以防丢失。</p>
-            <div className="space-y-3 mb-6">
-              <Button fullWidth variant="outline" onClick={() => {
-                const data = { version: 2, timestamp: Date.now(), decks, stats, folders };
-                const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = `CCB_V2_Backup_${new Date().toLocaleDateString()}.json`; a.click();
-              }}><Download className="w-4 h-4 mr-2"/> 导出存档数据</Button>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4 overflow-y-auto custom-scrollbar">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full animate-in zoom-in-95 my-8">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-black flex items-center gap-2 text-slate-800"><Database className="w-6 h-6 text-slate-400" /> 数据中心</h3>
+              <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X className="w-5 h-5" /></button>
             </div>
-            <Button fullWidth variant="ghost" onClick={() => setShowSettings(false)}>关闭</Button>
+            
+            <div className="space-y-6">
+              {/* 1. 存档管理 */}
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                <div className="flex items-center gap-2 mb-2 text-slate-700 font-black text-sm uppercase tracking-widest"><Database className="w-4 h-4" /> 存档管理</div>
+                <p className="text-xs text-slate-500 mb-5 font-medium leading-relaxed">数据存储在浏览器本地。防止数据丢失或迁移设备，请定期导出。</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <Button variant="outline" className="font-bold rounded-xl text-sm border-slate-200 text-slate-600 bg-white" onClick={() => {
+                    const data = { version: 2, timestamp: Date.now(), decks, stats, folders };
+                    const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.href = url; a.download = `CCB_V2_Backup_${new Date().toLocaleDateString()}.json`; a.click();
+                  }}><Download className="w-4 h-4 mr-2"/> 导出存档</Button>
+                  
+                  <div className="w-full">
+                    <input type="file" ref={fileInputRef} onChange={(e) => {
+                      const f = e.target.files?.[0]; if (!f) return;
+                      const r = new FileReader();
+                      r.onload = (ev) => {
+                        try {
+                          const b = JSON.parse(ev.target?.result as string);
+                          setDecks(b.decks); setStats(b.stats); if (b.folders) setFolders(b.folders);
+                          setImportStatus('success'); setTimeout(() => setShowSettings(false), 1500);
+                        } catch(e) { setImportStatus('error'); }
+                      };
+                      r.readAsText(f);
+                    }} className="hidden" />
+                    <Button fullWidth variant="outline" className={`font-bold rounded-xl text-sm border-slate-200 bg-white ${importStatus==='success'?'text-emerald-600 border-emerald-200 bg-emerald-50':'text-slate-600'}`} onClick={() => fileInputRef.current?.click()}>
+                      <Upload className="w-4 h-4 mr-2"/> {importStatus==='success'?'导入成功':'导入存档'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. 全局重置修行 */}
+              <div className="bg-[#fffbf0] p-6 rounded-2xl border border-[#ffedd5]">
+                <div className="flex items-center gap-2 mb-2 text-[#d97706] font-black text-sm uppercase tracking-widest"><RotateCcw className="w-4 h-4" /> 全局重置修行</div>
+                <p className="text-xs text-[#b45309] mb-5 font-medium leading-relaxed">保留所有单词本内容（题目、答案、笔记），但将所有词汇状态重置为“新词”，清空所有连对/连错记录、累计时长与修为境界。</p>
+                <Button fullWidth variant="outline" className="font-bold py-3 rounded-xl border-[#fed7aa] text-[#c2410c] hover:bg-[#ffedd5] bg-white" onClick={() => setShowGlobalProgressResetConfirm(true)}>
+                  仅重置进度 (保留词库)
+                </Button>
+              </div>
+
+              {/* 3. 危险区域 */}
+              <div className="bg-[#fff1f2] p-6 rounded-2xl border border-[#ffe4e6]">
+                <div className="flex items-center gap-2 mb-2 text-[#e11d48] font-black text-sm uppercase tracking-widest"><AlertTriangle className="w-4 h-4" /> 危险区域</div>
+                <p className="text-xs text-[#be123c] mb-5 font-medium leading-relaxed">不可逆操作。删除所有文件夹、单词本、背诵记录与统计数据。应用将完全恢复至初始状态。</p>
+                <Button fullWidth className="font-black py-3 rounded-xl bg-[#e11d48] hover:bg-[#be123c] text-white border-0 shadow-md shadow-rose-200" onClick={() => setShowFactoryResetConfirm(true)}>
+                  彻底格式化全站
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 重置确认弹窗 */}
+      {showGlobalProgressResetConfirm && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[300] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center space-y-6">
+            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto"><RotateCcw className="w-8 h-8 text-amber-600" /></div>
+            <div>
+              <h3 className="text-xl font-black text-slate-900 mb-2">重置进度确认</h3>
+              <p className="text-slate-500 text-sm">将抹除全站所有打分记录、学习时长和历史记录。</p>
+            </div>
+            <input autoFocus value={progressResetInput} onChange={e=>setProgressResetInput(e.target.value)} className="w-full p-4 border-2 border-amber-100 rounded-2xl text-center font-black text-lg outline-none" placeholder="输入 RESET 确认" />
+            <div className="flex flex-col gap-2">
+              <Button onClick={handleGlobalProgressReset} disabled={progressResetInput !== 'RESET'} className="py-4 font-black bg-amber-500 hover:bg-amber-600">确认重置</Button>
+              <Button variant="ghost" onClick={() => { setShowGlobalProgressResetConfirm(false); setProgressResetInput(''); }}>取消</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFactoryResetConfirm && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[300] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center space-y-6">
+            <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto"><AlertTriangle className="w-8 h-8 text-rose-600" /></div>
+            <div>
+              <h3 className="text-xl font-black text-slate-900 mb-2">彻底格式化确认</h3>
+              <p className="text-slate-500 text-sm">操作不可逆，所有数据将灰飞烟灭！</p>
+            </div>
+            <input autoFocus value={factoryResetInput} onChange={e=>setFactoryResetInput(e.target.value)} className="w-full p-4 border-2 border-rose-100 rounded-2xl text-center font-black text-lg outline-none" placeholder="输入 DELETE 确认" />
+            <div className="flex flex-col gap-2">
+              <Button onClick={handleFactoryReset} disabled={factoryResetInput !== 'DELETE'} className="py-4 font-black bg-rose-600 hover:bg-rose-700">确认彻底删除</Button>
+              <Button variant="ghost" onClick={() => { setShowFactoryResetConfirm(false); setFactoryResetInput(''); }}>取消</Button>
+            </div>
           </div>
         </div>
       )}
