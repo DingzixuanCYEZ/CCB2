@@ -13,6 +13,7 @@ import { DailyReviewSession } from './components/DailyReviewSession';
 import { ExamSession } from './components/ExamSession';
 import { DeckEditor } from './components/DeckEditor';
 import { Importer } from './components/Importer';
+import { DailyReport } from './components/DailyReport';
 import { Button } from './components/Button';
 
 // 3. 图标引入 (已补全所有缺失的图标)
