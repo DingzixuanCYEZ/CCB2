@@ -205,7 +205,6 @@ export const DailyReport: React.FC<DailyReportProps> = ({ stats, globalStats, de
                 </div>
              </div>
           </div>
-// src/components/DailyReport.tsx (Part 3) 接着上文
 
           {/* C. 详细复盘记录 BREAKDOWN */}
           <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col mt-2">
