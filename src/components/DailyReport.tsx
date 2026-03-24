@@ -1,7 +1,4 @@
-// src/components/DailyReport.tsx
-
 import React, { useState } from 'react';
-// 1. 确保导入正确的业务类型
 import { DailyStats, Deck, ActivityLog, DeckSubject } from '../types';
 import { 
   X, Clock, Target, BookOpen, TrendingUp, GraduationCap, Zap, 
@@ -10,17 +7,14 @@ import {
 } from 'lucide-react';
 import { Button } from './Button';
 
-// 2. 核心修复：从新的 utils 路径引入函数，且不要重复！
+// 核心修复：只从正确的 utils 路径导入，严禁从 ../App 导入这些函数
 import { getDynamicColor } from '../utils/algo'; 
 import { getRealmInfo, getPersistenceGrade } from '../utils/realms';
 
-// 3. 这里的 formatFullTime 稍后我们去 App.tsx 确认导出
-import { formatFullTime } from '../App';
-import { 
-  getDynamicColor, getRealmInfo, formatFullTime, 
-  getPersistenceGrade 
-} from '../App'; 
-import { calculateMastery, getNScore } from '../utils/algo';
+// 只从 App 导入格式化时间的函数
+import { formatFullTime } from '../App'; 
+
+// 注意：请确保下方没有任何其他 import 语句了
 
 interface DailyReportProps {
   stats: DailyStats;
