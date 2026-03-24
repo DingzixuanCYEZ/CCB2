@@ -299,7 +299,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
     let newDailyQueue = [...dailyQueue];
     newDailyQueue.shift(); // 移除当前
 
-    const isCleared = finalBack > 100;
+    const isCleared = finalBack > algoSettings.cap; 
     if (!isCleared) {
       const insertIdx = Math.min(finalBack, newDailyQueue.length);
       newDailyQueue.splice(insertIdx, 0, activeItem);
@@ -572,11 +572,11 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                        </div>
                     </div>
 
-                    {/* 明亮风格后推面板，显示是否通关 */}
+                    {/* 亮色后推面板与实时预测 (允许自主设定，红绿变色提示通关) */}
                     <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 shadow-sm animate-in slide-in-from-bottom-2">
-                      <div className="flex justify-between items-center">
+                      <div className="flex justify-between items-center mb-4">
                         <div className="flex flex-col">
-                          <span className="text-xs font-black text-indigo-900 uppercase tracking-widest flex items-center gap-1.5">单本内预期后推</span>
+                          <span className="text-xs font-black text-indigo-900 uppercase tracking-widest flex items-center gap-1.5"><Settings2 size={14}/> 单本内预期后推</span>
                           <div className="text-[10px] font-bold text-slate-500 mt-1 flex items-center gap-1">
                               <span>Score 预测:</span>
                               <span className="text-slate-400">{currentPhrase.score?.toFixed(2) ?? '0.00'}</span>
@@ -586,14 +586,41 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                               </span>
                           </div>
                         </div>
+                        
                         <div className="flex flex-col items-end">
-                            <div className="flex items-center gap-3">
-                                <span className="text-[10px] font-bold text-slate-400">通关需要 &gt; 100</span>
-                                <span className={`font-mono font-black text-3xl ${computedBack > 100 ? 'text-emerald-500' : 'text-rose-500'}`}>{prof !== null ? computedBack : watchBackValue}</span>
+                            <div className="flex items-center gap-2">
+                              {/* 【修改这里】：UI 显示动态的通关条件 */}
+                              <span className="text-[10px] font-bold text-slate-400 mr-1">通关需要 &gt; {algoSettings.cap}</span>
+                              <input type="number" min="1" 
+                                value={customBack ?? (prof !== null ? computedBack : watchBackValue)} 
+                                onChange={e => setCustomBack(Math.max(1, parseInt(e.target.value) || 1))} 
+                                /* 【修改这里】：变色条件改为 algoSettings.cap */
+                                className={`w-16 bg-white border rounded-lg p-1.5 text-center font-mono font-black text-lg focus:ring-2 outline-none shadow-sm ${(customBack ?? (prof !== null ? computedBack : watchBackValue)) > algoSettings.cap ? 'border-emerald-200 text-emerald-600 ring-emerald-400' : 'border-rose-200 text-rose-600 ring-rose-400'}`} 
+                              />
+                              {customBack !== null && (
+                                <button onClick={() => setCustomBack(null)} className="p-1.5 text-slate-400 hover:text-indigo-600 bg-white rounded-md transition-colors shadow-sm border border-slate-200" title="恢复系统计算">
+                                  <RefreshCw size={14}/>
+                                </button>
+                              )}
                             </div>
-                            {computedBack <= 100 && prof !== null && <span className="text-[10px] text-rose-400 font-bold mt-1 animate-pulse">将会在队尾重现</span>}
-                            {computedBack > 100 && prof !== null && <span className="text-[10px] text-emerald-500 font-bold mt-1">达成过关条件！</span>}
+                            {/* 【修改这里】：红字绿字提示逻辑 */}
+                            {(customBack ?? (prof !== null ? computedBack : watchBackValue)) <= algoSettings.cap ? 
+                                <span className="text-[10px] text-rose-500 font-bold mt-1.5 animate-pulse">将会在队尾重现</span> : 
+                                <span className="text-[10px] text-emerald-600 font-bold mt-1.5">达成过关条件！</span>
+                            }
                         </div>
+                      </div>
+
+                      {/* Log2 滑动条 */}
+                      <input type="range" min="0" max="1000" step="1" 
+                        value={mapBackToSlider(customBack ?? (prof !== null ? computedBack : watchBackValue))} 
+                        onChange={e => setCustomBack(mapSliderToBack(parseInt(e.target.value)))}
+                        className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer ${(customBack ?? (prof !== null ? computedBack : watchBackValue)) > 100 ? 'bg-emerald-200/60 accent-emerald-500' : 'bg-rose-200/60 accent-rose-500'}`} 
+                      />
+                      <div className="flex justify-between text-[8px] font-black text-slate-400 mt-2 px-1 tracking-widest uppercase">
+                        <span>1</span>
+                        <span>Log2 Scale</span>
+                        <span>100K+</span>
                       </div>
                     </div>
                   </div>
