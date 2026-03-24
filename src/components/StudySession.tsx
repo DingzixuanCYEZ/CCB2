@@ -192,7 +192,10 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     setIsEditing(false);
   },[currentPhrase, editForm, deck, onUpdateDeck]);
 
-  // 核心：处理单次卡片提交
+  // 0. 确保组件顶层有这个 state
+  const [coolingPool, setCoolingPool] = useState<{id: string, wait: number}[]>(deck.coolingPool || []);
+
+  // 1. 彻底重写的 handleFinishCard
   const handleFinishCard = useCallback((isWatch: boolean) => {
     if (!currentPhrase || isAntiTouchActive) return;
 
@@ -201,20 +204,21 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
 
     const todayDays = Math.floor(Date.now() / 86400000);
     const gap = (todayDays - (currentPhrase.date || todayDays)) + 1;
-    const C = ALGO_TIERS[algoSettings.tierIdx].C;
-    const base = ALGO_TIERS[algoSettings.tierIdx].base;
+    const { C, base, cap, allowFreeze } = algoSettings;
 
     let finalBack = 1;
     let newScore = currentPhrase.score;
 
+    // --- 算法计算部分 ---
     if (isWatch) {
-      finalBack = customBack ?? watchBackValue;
+      const nscore = getNScore(currentPhrase.score ?? 0, diff);
+      finalBack = customBack ?? calculateWatchBack(nscore, C, base);
       setSessionResults(prev => [...prev, { phrase: currentPhrase, prof: 'watch' }]);
     } else {
       if (prof === null) { setIsAntiTouchActive(false); return; }
-      const res = calculateNextState(currentPhrase.score, prof, diff, gap, C, base, algoSettings.cap);
+      const res = calculateNextState(currentPhrase.score, prof, diff, gap, C, base, cap);
       newScore = res.newScore;
-      finalBack = customBack !== null ? customBack : computedBack;
+      finalBack = customBack !== null ? customBack : calculateBack(res.nscore, C, base);
 
       setStats(prev => ({
         count0_1: prev.count0_1 + (prof <= 1 ? 1 : 0),
@@ -222,12 +226,12 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
         count4_5: prev.count4_5 + (prof >= 4 ? 1 : 0),
       }));
       
-      const gainMap =[-1.0, -0.6, -0.2, 0.2, 0.6, 1.0];
+      const gainMap = [-1.0, -0.6, -0.2, 0.2, 0.6, 1.0];
       setCultivationGain(prev => prev + gainMap[prof]);
-
-      setSessionResults(prev =>[...prev, { phrase: currentPhrase, prof }]);
+      setSessionResults(prev => [...prev, { phrase: currentPhrase, prof }]);
     }
 
+    // --- 更新词条属性 ---
     const updatedPhrase: Phrase = {
       ...currentPhrase,
       score: isWatch ? currentPhrase.score : newScore,
@@ -239,31 +243,78 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
       lastReviewedAt: Date.now()
     };
 
-    const newQueue = deck.queue.filter(id => id !== activeId);
+    // --- 核心：冷却池逻辑（解决循环问题） ---
     
-    // 如果允许冻结，直接插在队尾；如果不允许冻结，超出队列长度的直接出列（通关）
-    if (algoSettings.allowFreeze) {
-      const insertIdx = Math.min(finalBack, newQueue.length);
-      newQueue.splice(insertIdx, 0, activeId!);
+    // 1. 从活跃队列和旧冷却池中移除当前词条
+    let nextQueue = deck.queue.filter(id => id !== activeId);
+    let nextCoolingPool = [...coolingPool].filter(c => c.id !== activeId);
+
+    // 2. 推进冷却：冷却池所有词条等待步数减 1
+    nextCoolingPool = nextCoolingPool.map(c => ({ ...c, wait: c.wait - 1 }));
+
+    // 3. 处理当前词条去向
+    const L = nextQueue.length;
+    if (finalBack <= L) {
+      // 情况 A：步数在当前队列长度内，直接插入
+      nextQueue.splice(finalBack, 0, activeId!);
     } else {
-      if (finalBack <= newQueue.length) {
-        newQueue.splice(finalBack, 0, activeId!);
+      // 情况 B：步数超出当前队列长度
+      if (allowFreeze) {
+        // 允许冻结：将其送入冷却池，等待步数为超出部分
+        // 例如队列剩 5 个，back 是 12，那么在冷却池待 7 步后苏醒
+        nextCoolingPool.push({ id: activeId!, wait: finalBack - L });
+      } else {
+        // 不允许冻结：直接出列（不再进入 nextQueue 也不进 pool），实现“通关”
       }
     }
 
+    // 4. 苏醒判定：检查冷却池中是否有 wait <= 0 的词条，将其移回队列末尾
+    const wakingUp = nextCoolingPool.filter(c => c.wait <= 0);
+    nextCoolingPool = nextCoolingPool.filter(c => c.wait > 0);
+    nextQueue.push(...wakingUp.map(c => c.id));
+
+    // 5. 快进补救（防空逻辑）：如果队列空了但冷却池还有词，强制快进唤醒最快的一个
+    if (nextQueue.length === 0 && nextCoolingPool.length > 0) {
+      const minWait = Math.min(...nextCoolingPool.map(c => c.wait));
+      nextCoolingPool = nextCoolingPool.map(c => ({ ...c, wait: c.wait - minWait }));
+      
+      const nowWaking = nextCoolingPool.filter(c => c.wait <= 0);
+      nextCoolingPool = nextCoolingPool.filter(c => c.wait > 0);
+      nextQueue.push(...nowWaking.map(c => c.id));
+    }
+
+    // --- 更新外部数据 ---
+    setCoolingPool(nextCoolingPool);
     const updatedPhrases = deck.phrases.map(p => p.id === activeId ? updatedPhrase : p);
+    
     const currentGlobalMastery = updatedPhrases.reduce((acc, p) => acc + (p.mastery || 0), 0) / updatedPhrases.length;
-    setMasteryTrend(prev =>[...prev, { t: sessionDuration, v: currentGlobalMastery }]);
+    setMasteryTrend(prev => [...prev, { t: sessionDuration, v: currentGlobalMastery }]);
 
-    onUpdateDeck({ ...deck, queue: newQueue, phrases: updatedPhrases });
+    onUpdateDeck({ 
+      ...deck, 
+      queue: nextQueue, 
+      phrases: updatedPhrases, 
+      coolingPool: nextCoolingPool // 别忘了持久化保存冷却池
+    });
 
-    setPhase('QUESTION');
-    setIsTimeout(false);
-    setTimeLeft(algoSettings.timeLimit);
-    setProf(null);
-    setCustomBack(null);
-    setActiveId(newQueue.length > 0 ? newQueue[0] : null);
-  },[currentPhrase, isAntiTouchActive, algoSettings, diff, customBack, prof, deck, activeId, sessionDuration, onUpdateDeck, watchBackValue, computedBack]);
+    // --- 视图重置 ---
+    if (nextQueue.length === 0) {
+      setIsFinished(true);
+      setPhase('REPORT');
+      setActiveId(null);
+    } else {
+      setPhase('QUESTION');
+      setIsTimeout(false);
+      setTimeLeft(algoSettings.timeLimit);
+      setProf(null);
+      setCustomBack(null);
+      setActiveId(nextQueue[0]);
+    }
+  }, [
+    currentPhrase, isAntiTouchActive, algoSettings, diff, customBack, 
+    prof, deck, activeId, sessionDuration, onUpdateDeck, 
+    watchBackValue, computedBack, coolingPool
+  ]);
 
   // 新增：拦截退出，进入报告模式
   const handleRequestExit = () => {
