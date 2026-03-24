@@ -58,6 +58,7 @@ export const App: React.FC = () => {
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [showDailyReport, setShowDailyReport] = useState(false);
 // 数据中心弹窗状态
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -348,7 +349,7 @@ export const App: React.FC = () => {
       <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
         
         {/* 顶部控制区 */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+	<div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-indigo-50 rounded-2xl border border-indigo-100 shadow-sm cursor-pointer" onClick={() => setCurrentFolderId(null)}>
               <ScrollText className="text-indigo-600 w-8 h-8" />
@@ -359,10 +360,22 @@ export const App: React.FC = () => {
             </div>
           </div>
           <div className="flex gap-3 flex-wrap">
-            <Button onClick={() => setShowSettings(true)} variant="outline" className="text-sm font-bold border-slate-200 text-slate-700 bg-white"><Database className="w-4 h-4 mr-1"/> 数据中心</Button>
-            <Button onClick={() => setShowNewFolderModal(true)} variant="outline" className="text-sm font-bold border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100"><FolderPlus className="w-4 h-4 mr-1" /> 建文件夹</Button>
-            <Button onClick={() => setView(AppView.IMPORT)} className="px-5 py-2 text-sm font-black shadow-lg shadow-indigo-100 bg-indigo-600 text-white hover:bg-indigo-700"><PlusCircle className="w-4 h-4 mr-2" /> 新建词本</Button>
-            <Button onClick={() => setDailyReviewSetup(true)} className="px-5 py-2 text-sm font-black shadow-lg shadow-rose-200 bg-rose-500 hover:bg-rose-600"><Flame className="w-4 h-4 mr-2" /> 每日大盘</Button>
+            {/* 新增日报入口按钮 */}
+            <Button onClick={() => setShowDailyReport(true)} variant="outline" className="px-4 py-2 text-sm font-bold border-indigo-100 text-indigo-700 bg-white">
+                <FileText className="w-4 h-4 mr-2" /> 日报
+            </Button>
+            <Button onClick={() => setShowSettings(true)} variant="outline" className="px-4 py-2 text-sm font-bold border-slate-200 text-slate-700 bg-white">
+                <Database className="w-4 h-4 mr-1"/> 数据中心
+            </Button>
+            <Button onClick={() => setShowNewFolderModal(true)} variant="outline" className="px-4 py-2 text-sm font-bold border-amber-200 text-amber-700 bg-amber-50">
+                <FolderPlus className="w-4 h-4 mr-1" /> 文件夹
+            </Button>
+            <Button onClick={() => setView(AppView.IMPORT)} className="px-5 py-2 text-sm font-black shadow-lg shadow-indigo-100 bg-indigo-600 text-white hover:bg-indigo-700">
+                <PlusCircle className="w-4 h-4 mr-2" /> 新建词本
+            </Button>
+            <Button onClick={() => setDailyReviewSetup(true)} className="px-5 py-2 text-sm font-black shadow-lg shadow-rose-200 bg-rose-500 hover:bg-rose-600">
+                <Flame className="w-4 h-4 mr-2" /> 每日大盘
+            </Button>
           </div>
         </div>
 
@@ -379,48 +392,94 @@ export const App: React.FC = () => {
           </div>
         )}
           
-        {/* 修为看板 (仅在首页显示) */}
         {currentFolderId === null && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-slate-400 font-bold uppercase text-xs tracking-wider">英语修为 (English)</span>
-                <div className="text-4xl font-black text-indigo-600">{stats.subjectStats.English.toFixed(1)}</div>
-              </div>
-              <div className="mb-6">
-                <div className="flex justify-between items-end mb-1.5">
-                  <span className={`text-sm font-black ${englishRealm.color}`}>{englishRealm.name}</span>
-                  <span className="text-[10px] text-slate-400 font-bold">距下阶还差 {englishRealm.remain}</span>
-                </div>
-                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div className={`h-full transition-all duration-1000 ${englishRealm.bg.replace('50', '500')}`} style={{ width: `${englishRealm.percent}%` }}></div>
-                </div>
-              </div>
-              <div className="flex justify-between items-end mb-1">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">坚持等级</span>
-                <span className={`text-xs font-black ${getPersistence('English').info.color}`}>{getPersistence('English').info.grade} <span className="text-[9px] text-slate-300">({Math.round(getPersistence('English').score)})</span></span>
-              </div>
-            </div>
-            
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-slate-400 font-bold uppercase text-xs tracking-wider">语文品阶 (Chinese)</span>
-                <div className="text-4xl font-black text-emerald-600">{stats.subjectStats.Chinese.toFixed(1)}</div>
-              </div>
-              <div className="mb-6">
-                <div className="flex justify-between items-end mb-1.5">
-                  <span className={`text-sm font-black ${chineseRealm.color}`}>{chineseRealm.name}</span>
-                  <span className="text-[10px] text-slate-400 font-bold">距下阶还差 {chineseRealm.remain}</span>
-                </div>
-                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div className={`h-full transition-all duration-1000 ${chineseRealm.bg.replace('50', '500')}`} style={{ width: `${chineseRealm.percent}%` }}></div>
-                </div>
-              </div>
-              <div className="flex justify-between items-end mb-1">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">坚持等级</span>
-                <span className={`text-xs font-black ${getPersistence('Chinese').info.color}`}>{getPersistence('Chinese').info.grade} <span className="text-[9px] text-slate-300">({Math.round(getPersistence('Chinese').score)})</span></span>
-              </div>
-            </div>
+            {/* 英语修为卡片 */}
+            {(() => {
+                const metrics = (subj: 'English' | 'Chinese') => {
+                    const relevantDecks = decks.filter(d => d.subject === subj);
+                    const todayActs = stats.daily.activities?.filter(a => a.deckSubject === subj) || [];
+                    const totalTime = relevantDecks.reduce((acc, d) => acc + (d.stats?.totalStudyTimeSeconds || 0), 0);
+                    const todayTime = todayActs.reduce((acc, a) => acc + a.durationSeconds, 0);
+                    const totalReviews = relevantDecks.reduce((acc, d) => acc + (d.stats?.totalReviewCount || 0), 0);
+                    // 精确计算累计正确（即 prof >= 4 的次数，或者 V1 的累计正确）
+                    const totalCorrect = (relevantDecks.reduce((acc, d) => {
+                        return acc + (d.sessionHistory?.reduce((s, log) => s + (log.count4_5 || 0), 0) || 0);
+                    }, 0));
+                    return { todayTime, totalTime, totalReviews, totalCorrect };
+                };
+
+                const en = metrics('English');
+                const cn = metrics('Chinese');
+
+                return (
+                  <>
+                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 relative overflow-hidden group">
+                      {/* 背景装饰图标 */}
+                      <Languages className="absolute -right-4 -top-4 w-32 h-32 text-indigo-500 opacity-[0.03] rotate-12 group-hover:scale-110 transition-transform duration-700" />
+                      
+                      <div className="relative z-10">
+                        <div className="flex items-baseline justify-between mb-2">
+                          <span className="text-slate-400 font-bold uppercase text-xs tracking-wider">英语修为 (ENGLISH)</span>
+                        </div>
+                        <div className="text-5xl font-black text-indigo-600 mb-6 tracking-tighter">{stats.subjectStats.English.toFixed(1)}</div>
+                        
+                        <div className="mb-6">
+                          <div className="flex justify-between items-end mb-2">
+                            <div>
+                                <div className={`text-base font-black ${englishRealm.color}`}>{englishRealm.name.split('·')[0]}</div>
+                                <div className="text-[10px] text-slate-400 font-bold uppercase">{englishRealm.name.split('·')[1] || "凡人境"}</div>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-bold">距下阶还差 {englishRealm.remain}</span>
+                          </div>
+                          <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className={`h-full transition-all duration-1000 ${englishRealm.bg.replace('50', '500')}`} style={{ width: `${englishRealm.percent}%` }}></div>
+                          </div>
+                        </div>
+
+                        {/* 四宫格数据统计 */}
+                        <div className="grid grid-cols-2 gap-y-4 gap-x-8 border-t border-slate-50 pt-6">
+                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">今日时长</span><span className="text-sm font-bold text-slate-700">{formatFullTime(en.todayTime)}</span></div>
+                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">累计时长</span><span className="text-sm font-bold text-slate-700">{formatFullTime(en.totalTime)}</span></div>
+                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">总复习数</span><span className="text-sm font-bold text-slate-700">{en.totalReviews}</span></div>
+                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">累计优秀</span><span className="text-sm font-bold text-emerald-600">{en.totalCorrect}</span></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 relative overflow-hidden group">
+                      <ScrollText className="absolute -right-4 -top-4 w-32 h-32 text-emerald-500 opacity-[0.03] -rotate-12 group-hover:scale-110 transition-transform duration-700" />
+                      
+                      <div className="relative z-10">
+                        <div className="flex items-baseline justify-between mb-2">
+                          <span className="text-slate-400 font-bold uppercase text-xs tracking-wider">语文品阶 (CHINESE)</span>
+                        </div>
+                        <div className="text-5xl font-black text-emerald-600 mb-6 tracking-tighter">{stats.subjectStats.Chinese.toFixed(1)}</div>
+                        
+                        <div className="mb-6">
+                          <div className="flex justify-between items-end mb-2">
+                            <div>
+                                <div className={`text-base font-black ${chineseRealm.color}`}>{chineseRealm.name.split('·')[0]}</div>
+                                <div className="text-[10px] text-slate-400 font-bold uppercase">{chineseRealm.name.split('·')[1] || "入门"}</div>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-bold">距下阶还差 {chineseRealm.remain}</span>
+                          </div>
+                          <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className={`h-full transition-all duration-1000 ${chineseRealm.bg.replace('50', '500')}`} style={{ width: `${chineseRealm.percent}%` }}></div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-y-4 gap-x-8 border-t border-slate-50 pt-6">
+                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">今日时长</span><span className="text-sm font-bold text-slate-700">{formatFullTime(cn.todayTime)}</span></div>
+                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">累计时长</span><span className="text-sm font-bold text-slate-700">{formatFullTime(cn.totalTime)}</span></div>
+                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">总复习数</span><span className="text-sm font-bold text-slate-700">{cn.totalReviews}</span></div>
+                            <div><span className="text-[10px] text-slate-400 font-black uppercase block mb-0.5">累计优秀</span><span className="text-sm font-bold text-emerald-600">{cn.totalCorrect}</span></div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+            })()}
           </div>
         )}
 
@@ -751,6 +810,16 @@ export const App: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+  {/* 每日学习日报 */}
+      {showDailyReport && (
+        <DailyReport 
+          stats={stats.daily} 
+          globalStats={stats.subjectStats} 
+          decks={decks} 
+          onClose={() => setShowDailyReport(false)} 
+          persistence={stats.persistence}
+        />
       )}
     </>
   );
