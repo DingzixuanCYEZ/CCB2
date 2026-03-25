@@ -366,6 +366,14 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
   const questionText = isEnToCn_Mode ? currentPhrase.english : currentPhrase.chinese;
   const answerText = isEnToCn_Mode ? currentPhrase.chinese : currentPhrase.english;
 
+  const liveMasteryValue = masteryTrend.length > 0 ? masteryTrend[masteryTrend.length - 1].v : startMastery;
+  const isNew = currentPhrase.score === undefined || currentPhrase.score === 0;
+  const profLabelsNew =["完全没思路", "思路大体对", "缺东西", "差一点", "正确但不确定", "正确"];
+  const profLabelsOld =["完全没印象", "印象不清楚", "缺东西", "差一点", "勉强想出", "快速想出"];
+  const currentLabels = isNew ? profLabelsNew : profLabelsOld;
+  const currentBackDisplay = customBack ?? (prof !== null ? computedBack : watchBackValue);
+  const isNowFrozen = algoSettings.allowFreeze && currentBackDisplay > Math.max(0, deck.queue.length - 1);
+
   return (
     <div className="fixed inset-0 bg-slate-50 z-[100] flex flex-col h-full overflow-hidden">
       
