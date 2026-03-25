@@ -352,7 +352,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
       </div>
     );
   };
-  // src/components/StudySession.tsx (Part 2)
+// src/components/StudySession.tsx (Part 2)
 
   // ========== UI 渲染逻辑 ==========
 
