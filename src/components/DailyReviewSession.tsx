@@ -249,6 +249,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
       setCultivationGain(prev => prev + gainMap[prof]);
     }
 
+    const isCleared = finalBack > algoSettings.cap;
     const updatedPhrase: Phrase = {
       ...currentPhrase,
       score: isWatch ? currentPhrase.score : newScore,
@@ -279,7 +280,6 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
     newDailyQueue.shift(); 
     newDailyQueue.push(...ready);
 
-    const isCleared = finalBack > algoSettings.cap;
     if (!isCleared) {
       if (algoSettings.allowFreeze && finalBack > newDailyQueue.length) {
         nextCoolingPool.push({ ...activeItem, wait: finalBack - newDailyQueue.length });
