@@ -751,7 +751,7 @@ export const App: React.FC = () => {
                     const data = { version: 2, timestamp: Date.now(), decks, stats, folders };
                     const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
                     const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a'); a.href = url; a.download = `CCB_V2_Backup_${new Date().toLocaleDateString()}.json`; a.click();
+                    const a = document.createElement('a'); a.href = url; a.download = `CCB_V2_Backup_${Math.floor(Date.now() / 1000)}.json`; a.click();
                   }}><Download className="w-4 h-4 mr-2"/> 导出存档</Button>
                   
                   <div className="w-full">
@@ -789,6 +789,27 @@ export const App: React.FC = () => {
                 <p className="text-xs text-[#be123c] mb-5 font-medium leading-relaxed">不可逆操作。删除所有文件夹、单词本、背诵记录与统计数据。应用将完全恢复至初始状态。</p>
                 <Button fullWidth className="font-black py-3 rounded-xl bg-[#e11d48] hover:bg-[#be123c] text-white border-0 shadow-md shadow-rose-200" onClick={() => setShowFactoryResetConfirm(true)}>
                   彻底格式化全站
+                </Button>
+              </div>
+
+              {/* 4. 测试功能 */}
+              <div className="bg-[#f0f9ff] p-6 rounded-2xl border border-[#bae6fd]">
+                <div className="flex items-center gap-2 mb-2 text-[#0284c7] font-black text-sm uppercase tracking-widest"><Clock className="w-4 h-4" /> 测试功能</div>
+                <p className="text-xs text-[#0369a1] mb-5 font-medium leading-relaxed">模拟时间流逝一天，所有已学词条的 back 会立刻扣减一次衰减值，使其可能马上进入每日大盘复习队列中。</p>
+                <Button fullWidth variant="outline" className="font-bold py-3 rounded-xl border-[#7dd3fc] text-[#0ea5e9] hover:bg-[#e0f2fe] bg-white" onClick={() => {
+                   setDecks(prev => prev.map(deck => ({
+                     ...deck,
+                     phrases: deck.phrases.map(p => {
+                       if (p.score !== undefined && p.score !== 0) {
+                         const decay = DEFAULT_CAP * 1 / 10 + DEFAULT_CAP;
+                         return { ...p, back: (p.back || 0) - decay };
+                       }
+                       return p;
+                     })
+                   })));
+                   setShowSettings(false);
+                }}>
+                  测试：直接下一天
                 </Button>
               </div>
             </div>
