@@ -93,10 +93,11 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
   useEffect(() => {
     if (isInitialized) return;
     const cap = algoSettings.cap || 100;
+    const todayDays = Math.floor(Date.now() / 86400000);
     const initialQueue: (DailyQueueItem & { back: number })[] =[];
     workingDecks.forEach(deck => {
       deck.phrases.forEach(p => {
-        if (p.score !== undefined && (p.back || 0) <= cap) {
+        if (p.score !== undefined && (p.back || 0) <= cap && p.clearedDate !== todayDays) {
           initialQueue.push({ deckId: deck.id, phraseId: p.id, back: p.back || 0 });
         }
       });
@@ -248,6 +249,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
       setCultivationGain(prev => prev + gainMap[prof]);
     }
 
+    const isCleared = finalBack > algoSettings.cap;
     const updatedPhrase: Phrase = {
       ...currentPhrase,
       score: isWatch ? currentPhrase.score : newScore,
@@ -256,7 +258,8 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
       back: finalBack,
       totalReviews: currentPhrase.totalReviews + 1,
       mastery: calculateMastery(getNScore(isWatch ? (currentPhrase.score ?? 0) : newScore!, diff)),
-      lastReviewedAt: Date.now()
+      lastReviewedAt: Date.now(),
+      clearedDate: isCleared ? todayDays : currentPhrase.clearedDate
     };
 
     const updatedWorkingDecks = workingDecks.map(d => {
@@ -599,13 +602,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
           <div className="w-full max-w-xl bg-white rounded-3xl shadow-xl border border-slate-100 flex flex-col h-full max-h-[85vh] overflow-hidden relative">
             <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 flex flex-col items-center w-full relative">
                 <div className="w-full flex flex-col items-center text-center pt-6 mb-4">
-                  {phase === 'ANSWER' && (
-                    <div className="flex items-center gap-1.5 mb-2 bg-slate-50 border border-slate-100 px-2.5 py-0.5 rounded-full animate-in fade-in zoom-in-95 shadow-sm">
-                      <span className="text-[8px] font-black text-slate-300 uppercase">Score:</span>
-                      <span className="text-[10px] font-black text-slate-600">{(currentPhrase.score ?? 0).toFixed(2)}</span>
-                    </div>
-                  )}
-                  <h1 className="text-3xl sm:text-4xl font-black text-slate-800 leading-snug break-words max-w-full">{renderFormattedText(questionText)}</h1>
+                  <h1 className="text-2xl sm:text-3xl font-black text-slate-800 leading-snug break-words max-w-full">{renderFormattedText(questionText)}</h1>
                   {phase === 'QUESTION' && algoSettings.timeLimit > 0 && (
                     <div className="mt-8 flex flex-col items-center animate-in fade-in">
                       <div className={`text-[10px] font-black tabular-nums mb-1.5 ${isTimeout ? 'text-indigo-400' : 'text-slate-400'}`}>{isTimeout ? '已超过限时' : `${timeLeft.toFixed(1)}s`}</div>
@@ -619,7 +616,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                     {currentPhrase.note && (
                       <div className="w-full bg-amber-50/50 p-4 rounded-xl border border-amber-100 text-left relative mb-5 shadow-sm"><div className="absolute top-4 left-4"><StickyNote size={16} className="text-amber-400" /></div><div className="pl-7 text-sm font-bold text-slate-600 whitespace-pre-wrap leading-normal">{renderFormattedText(cleanNote(currentPhrase.note))}</div></div>
                     )}
-                    <div className="text-center py-2 px-4 rounded-xl w-full mb-6"><p className="text-3xl font-black text-indigo-600 leading-tight break-words">{renderFormattedText(answerText)}</p></div>
+                    <div className="text-center py-2 px-4 rounded-xl w-full mb-6"><p className="text-xl sm:text-2xl font-black text-indigo-600 leading-tight break-words">{renderFormattedText(answerText)}</p></div>
                     <div className="w-full mt-auto space-y-4">
                       <div className="flex items-center gap-3 mb-2 pl-1">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">难度 {diff}</span>
