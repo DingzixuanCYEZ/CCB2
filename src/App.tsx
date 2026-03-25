@@ -78,7 +78,7 @@ export const App: React.FC = () => {
     const today = Math.floor(Date.now() / 86400000);
     setDecks(prev => prev.map(deck => ({
         ...deck,
-        phrases: deck.phrases.map(p => ({ ...p, score: undefined, diff: 2.5, back: 0, date: today, mastery: 0, totalReviews: 0, totalWrong: 0, lastReviewedAt: undefined })),
+        phrases: deck.phrases.map(p => ({ ...p, score: undefined, diff: 2.5, back: 0, date: today, clearedDate: today, mastery: 0, totalReviews: 0, totalWrong: 0, lastReviewedAt: undefined })),
         stats: { totalStudyTimeSeconds: 0, totalReviewCount: 0 },
         sessionHistory:[]
     })));
@@ -221,7 +221,8 @@ export const App: React.FC = () => {
 
   const getPendingCount = useCallback((deck: Deck) => {
     const { cap } = getAlgoSettings();
-    return deck.phrases.filter(p => p.score !== undefined && (p.back || 0) <= cap).length;
+    const todayDays = Math.floor(Date.now() / 86400000);
+    return deck.phrases.filter(p => p.score !== undefined && (p.back || 0) <= cap && p.clearedDate !== todayDays).length;
   },[]);
 
   const hasPendingReviews = useCallback((scope: 'deck' | 'folder', id: string): boolean => {
@@ -865,7 +866,12 @@ export const App: React.FC = () => {
                        if (p.score !== undefined && p.score !== 0) {
                          const { cap, d } = getAlgoSettings();
                          const decay = cap + 1 * d;
-                         return { ...p, back: (p.back || 0) - decay };
+                         return { 
+                           ...p, 
+                           back: (p.back || 0) - decay,
+                           date: (p.date || 0) - 1,
+                           clearedDate: (p.clearedDate || 0) - 1 
+                         };
                        }
                        return p;
                      })
