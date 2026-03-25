@@ -734,7 +734,7 @@ export const App: React.FC = () => {
 
      {/* 完整数据中心弹窗 */}
       {showSettings && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4 overflow-y-auto custom-scrollbar">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-start justify-center p-4 overflow-y-auto custom-scrollbar">
           <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full animate-in zoom-in-95 my-8">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-2xl font-black flex items-center gap-2 text-slate-800"><Database className="w-6 h-6 text-slate-400" /> 数据中心</h3>
@@ -801,6 +801,7 @@ export const App: React.FC = () => {
                      ...deck,
                      phrases: deck.phrases.map(p => {
                        if (p.score !== undefined && p.score !== 0) {
+                         const DEFAULT_CAP = 100;
                          const decay = DEFAULT_CAP * 1 / 10 + DEFAULT_CAP;
                          return { ...p, back: (p.back || 0) - decay };
                        }
