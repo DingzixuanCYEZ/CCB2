@@ -527,8 +527,8 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                   <h1 className="text-3xl sm:text-4xl font-black text-slate-800 leading-snug break-words max-w-full">{renderFormattedText(questionText)}</h1>
                   {phase === 'QUESTION' && algoSettings.timeLimit > 0 && (
                     <div className="mt-8 flex flex-col items-center animate-in fade-in">
-                      <div className={`text-[10px] font-black tabular-nums mb-1.5 ${isTimeout ? 'text-rose-500' : 'text-slate-400'}`}>{isTimeout ? '已超过限时' : `${timeLeft.toFixed(1)}s`}</div>
-                      <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden shadow-inner"><div className={`h-full transition-all duration-100 ease-linear ${isTimeout ? 'bg-rose-500' : 'bg-indigo-400'}`} style={{ width: `${isTimeout ? 100 : (timeLeft / algoSettings.timeLimit) * 100}%` }} /></div>
+                      <div className={`text-[10px] font-black tabular-nums mb-1.5 ${isTimeout ? 'text-indigo-400' : 'text-slate-400'}`}>{isTimeout ? '已超过限时' : `${timeLeft.toFixed(1)}s`}</div>
+                      <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden shadow-inner"><div className={`h-full transition-all duration-100 ease-linear bg-indigo-400`} style={{ width: `${isTimeout ? 100 : (timeLeft / algoSettings.timeLimit) * 100}%` }} /></div>
                     </div>
                   )}
                 </div>
