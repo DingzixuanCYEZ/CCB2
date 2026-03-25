@@ -79,22 +79,21 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
 
   useEffect(() => {
     if (isInitialized) return;
-    const initialQueue: DailyQueueItem[] =[];
+    const cap = algoSettings.cap || 100;
+    const initialQueue: (DailyQueueItem & { back: number })[] =[];
     workingDecks.forEach(deck => {
       deck.phrases.forEach(p => {
-        if (p.score !== undefined && (p.back || 0) <= 0) {
-          initialQueue.push({ deckId: deck.id, phraseId: p.id });
+        if (p.score !== undefined && (p.back || 0) <= cap) {
+          initialQueue.push({ deckId: deck.id, phraseId: p.id, back: p.back || 0 });
         }
       });
     });
-    for (let i = initialQueue.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [initialQueue[i], initialQueue[j]] = [initialQueue[j], initialQueue[i]];
-    }
-    setDailyQueue(initialQueue);
+    // Sort by back ascending (urgency)
+    initialQueue.sort((a, b) => a.back - b.back);
+    setDailyQueue(initialQueue.map(q => ({ deckId: q.deckId, phraseId: q.phraseId })));
     setTotalPending(initialQueue.length);
     setIsInitialized(true);
-  }, [workingDecks, isInitialized]);
+  },[workingDecks, isInitialized, algoSettings.cap]);
 
   // === 2. 状态管理 ===
   const [phase, setPhase] = useState<'QUESTION' | 'ANSWER' | 'REPORT'>('QUESTION');
@@ -332,8 +331,9 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
 
   // 1. 专属的复盘报告页面
   if (phase === 'REPORT') {
-    const clearedCount = totalPending - dailyQueue.length;
-    const progressPercent = (clearedCount / totalPending) * 100;
+    const remaining = dailyQueue.length + coolingPool.length;
+    const clearedCount = totalPending - remaining;
+    const progressPercent = totalPending === 0 ? 100 : Math.min(100, Math.max(0, (clearedCount / totalPending) * 100));
 
     return (
       <div className="fixed inset-0 bg-slate-50 z-[200] flex flex-col items-center p-3 sm:p-6 overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-300">
@@ -451,7 +451,8 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
   const questionText = isEnToCn ? currentPhrase.english : currentPhrase.chinese;
   const answerText = isEnToCn ? currentPhrase.chinese : currentPhrase.english;
   
-  const progressPercent = Math.min(100, Math.max(0, ((totalPending - dailyQueue.length) / totalPending) * 100));
+  const remaining = dailyQueue.length + coolingPool.length;
+  const progressPercent = totalPending === 0 ? 100 : Math.min(100, Math.max(0, ((totalPending - remaining) / totalPending) * 100));
   const isNew = currentPhrase.score === undefined || currentPhrase.score === 0;
   const profLabelsNew =["完全没思路", "思路大体对", "缺东西", "差一点", "正确但不确定", "正确"];
   const profLabelsOld =["完全没印象", "印象不清楚", "缺东西", "差一点", "勉强想出", "快速想出"];
@@ -475,11 +476,11 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
               </div>
               <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden relative">
                 <div className="absolute top-0 left-0 h-full transition-all duration-700 ease-out" style={{ width: `${progressPercent}%`, backgroundColor: getDynamicColor(progressPercent) }}></div>
-              </div>
-              <div className="flex justify-between items-center w-full mt-1.5 leading-none">
-                <span className="text-[10px] font-black" style={{ color: getDynamicColor(progressPercent) }}>{progressPercent.toFixed(1)}%</span>
-                <span className="text-[9px] font-bold text-slate-400">剩余 {dailyQueue.length} 词</span>
-              </div>
+            </div>
+            <div className="flex justify-between items-center w-full mt-1.5 leading-none">
+              <span className="text-[10px] font-black" style={{ color: getDynamicColor(progressPercent) }}>{progressPercent.toFixed(1)}%</span>
+              <span className="text-[9px] font-bold text-slate-400">剩余 {remaining} 词</span>
+            </div>
           </div>
           <div className="flex gap-0.5 shrink-0 items-center">
             <button onClick={() => setShowAlgoMenu(!showAlgoMenu)} className={`p-1.5 rounded-lg transition-colors ${showAlgoMenu ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300 hover:text-slate-500'}`}><Settings2 size={18}/></button>
@@ -601,8 +602,8 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                   <h1 className="text-3xl sm:text-4xl font-black text-slate-800 leading-snug break-words max-w-full">{renderFormattedText(questionText)}</h1>
                   {phase === 'QUESTION' && algoSettings.timeLimit > 0 && (
                     <div className="mt-8 flex flex-col items-center animate-in fade-in">
-                      <div className={`text-[10px] font-black tabular-nums mb-1.5 ${isTimeout ? 'text-rose-500' : 'text-slate-400'}`}>{isTimeout ? '已超过限时' : `${timeLeft.toFixed(1)}s`}</div>
-                      <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden shadow-inner"><div className={`h-full transition-all duration-100 ease-linear ${isTimeout ? 'bg-rose-500' : 'bg-indigo-400'}`} style={{ width: `${isTimeout ? 100 : (timeLeft / algoSettings.timeLimit) * 100}%` }} /></div>
+                      <div className={`text-[10px] font-black tabular-nums mb-1.5 ${isTimeout ? 'text-indigo-400' : 'text-slate-400'}`}>{isTimeout ? '已超过限时' : `${timeLeft.toFixed(1)}s`}</div>
+                      <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden shadow-inner"><div className={`h-full transition-all duration-100 ease-linear bg-indigo-400`} style={{ width: `${isTimeout ? 100 : (timeLeft / algoSettings.timeLimit) * 100}%` }} /></div>
                     </div>
                   )}
                 </div>
