@@ -74,8 +74,21 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
   const [workingDecks, setWorkingDecks] = useState<Deck[]>(selectedDecks);
   const [dailyQueue, setDailyQueue] = useState<DailyQueueItem[]>([]);
   const [coolingPool, setCoolingPool] = useState<(DailyQueueItem & { wait: number })[]>([]);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const[isInitialized, setIsInitialized] = useState(false);
   const [totalPending, setTotalPending] = useState(0);
+
+  const [algoSettings, setAlgoSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem(ALGO_SETTINGS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return { ...parsed, d: parsed.d ?? 10 };
+      }
+      return { tierIdx: 2, cap: 100, d: 10, timeLimit: 10, allowFreeze: true };
+    } catch {
+      return { tierIdx: 2, cap: 100, d: 10, timeLimit: 10, allowFreeze: true };
+    }
+  });
 
   useEffect(() => {
     if (isInitialized) return;
@@ -98,19 +111,6 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
   // === 2. 状态管理 ===
   const [phase, setPhase] = useState<'QUESTION' | 'ANSWER' | 'REPORT'>('QUESTION');
   const [isFinished, setIsFinished] = useState(false);
-  
-  const [algoSettings, setAlgoSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem(ALGO_SETTINGS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return { ...parsed, d: parsed.d ?? 10 };
-      }
-      return { tierIdx: 2, cap: 100, d: 10, timeLimit: 10, allowFreeze: true };
-    } catch {
-      return { tierIdx: 2, cap: 100, d: 10, timeLimit: 10, allowFreeze: true };
-    }
-  });
 
   const [showAlgoMenu, setShowAlgoMenu] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
