@@ -1,17 +1,17 @@
-// src/components/StudySession.tsx
+// src/components/StudySession.tsx (Part 1)
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Deck, Phrase } from '../types';
 import { Button } from './Button';
 import { 
   ArrowLeft, Settings2, RefreshCw, Eye, ArrowRight, Clock, AlertCircle, 
-  Edit2, BarChart2, ListOrdered, X, CheckCircle2, Trophy, StickyNote, 
+  Edit2, BarChart2, ListOrdered, X, Trophy, StickyNote, 
   XCircle, ThermometerSnowflake, Waves, Hash, TrendingUp
 } from 'lucide-react';
 import { 
   calculateNextState, calculateBack, calculateWatchBack, 
   mapSliderToBack, mapBackToSlider, getNScore, EPS, calculateMastery,
-  getProficiencyLabel, getDynamicColor, getScoreBadgeColor, getPhraseLabel
+  getDynamicColor, getScoreBadgeColor, getPhraseLabel
 } from '../utils/algo';
 
 interface StudySessionProps {
@@ -61,12 +61,6 @@ const renderFormattedText = (text?: string) => {
   );
 };
 
-const getPhraseTag = (score: number | undefined) => {
-  if (score === undefined || score === 0) return '新';
-  if (score > 0) return `对${Math.ceil(score)}`;
-  return `错${Math.ceil(Math.abs(score))}`;
-};
-
 export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, onExit, onTimeUpdate, onSessionComplete }) => {
   const [activeId, setActiveId] = useState<string | null>(deck.queue.length > 0 ? deck.queue[0] : null);
   const [phase, setPhase] = useState<'QUESTION' | 'ANSWER' | 'REPORT'>('QUESTION');
@@ -84,7 +78,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
   const[showAlgoMenu, setShowAlgoMenu] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
-  const[isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({ english: '', chinese: '', note: '' });
   const [isAntiTouchActive, setIsAntiTouchActive] = useState(false); 
 
@@ -100,10 +94,12 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
 
   const [stats, setStats] = useState({ count0_1: 0, count2_3: 0, count4_5: 0 });
   const[cultivationGain, setCultivationGain] = useState<number>(0);
-  const [sessionResults, setSessionResults] = useState<{phrase: Phrase, prof: number | 'watch'}[]>([]);
+  
+  // 新增 nscore 记录以供复盘精确排序
+  const [sessionResults, setSessionResults] = useState<{phrase: Phrase, prof: number | 'watch', nscore: number}[]>([]);
   
   const [startMastery] = useState(() => deck.phrases.length === 0 ? 0 : deck.phrases.reduce((acc, p) => acc + (p.mastery || 0), 0) / deck.phrases.length);
-  const[masteryTrend, setMasteryTrend] = useState<{ t: number; v: number }[]>([{ t: 0, v: startMastery }]);
+  const [masteryTrend, setMasteryTrend] = useState<{ t: number; v: number }[]>([{ t: 0, v: startMastery }]);
 
   const currentPhrase = useMemo(() => deck.phrases.find(p => p.id === activeId), [activeId, deck.phrases]);
   const activeScore = useMemo(() => {
@@ -124,7 +120,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
       setSessionDuration(prev => prev + 1);
     }, 1000);
     return () => clearInterval(timerRef.current!);
-  }, [onTimeUpdate, isFinished, phase]);
+  },[onTimeUpdate, isFinished, phase]);
 
   useEffect(() => {
     if (phase === 'QUESTION' && algoSettings.timeLimit > 0 && !isEditing && !isFinished) {
@@ -148,20 +144,16 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
 
   useEffect(() => {
     if (isEditing && currentPhrase) {
-      setEditForm({
-        english: currentPhrase.english,
-        chinese: currentPhrase.chinese,
-        note: (currentPhrase.note || '').replace(/\\n/g, '\n')
-      });
+      setEditForm({ english: currentPhrase.english, chinese: currentPhrase.chinese, note: (currentPhrase.note || '').replace(/\\n/g, '\n') });
     }
-  }, [isEditing, currentPhrase]);
+  },[isEditing, currentPhrase]);
 
   const watchBackValue = useMemo(() => {
     if (!currentPhrase) return 1;
     const C = ALGO_TIERS[algoSettings.tierIdx].C;
     const base = ALGO_TIERS[algoSettings.tierIdx].base;
     return calculateWatchBack(getNScore(activeScore ?? 0, diff), C, base);
-  }, [currentPhrase, diff, algoSettings, activeScore]);
+  },[currentPhrase, diff, algoSettings, activeScore]);
 
   useEffect(() => {
     if (phase === 'ANSWER' && currentPhrase && prof !== null) {
@@ -212,7 +204,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     const updatedPhrases = deck.phrases.map(p => p.id === currentPhrase.id ? { ...p, ...editForm } : p);
     onUpdateDeck({ ...deck, phrases: updatedPhrases });
     setIsEditing(false);
-  }, [currentPhrase, editForm, deck, onUpdateDeck]);
+  },[currentPhrase, editForm, deck, onUpdateDeck]);
 
   const handleFinishCard = useCallback((isWatch: boolean) => {
     if (!currentPhrase || isAntiTouchActive) return;
@@ -225,19 +217,16 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
 
     let finalBack = isWatch ? (customBack ?? watchBackValue) : (customBack ?? computedBack);
     let newScore = isWatch ? activeScore : computedScore;
+    let finalNScore = isWatch ? getNScore(activeScore ?? 0, diff) : calculateNextState(activeScore, prof!, diff, gap, C, base, algoSettings.cap).nscore;
 
     if (!isWatch && prof !== null) {
       const pVal = prof as number;
-      setStats(prev => ({ 
-        count0_1: prev.count0_1 + (pVal <= 1 ? 1 : 0), 
-        count2_3: prev.count2_3 + (pVal >= 2 && pVal <= 3 ? 1 : 0), 
-        count4_5: prev.count4_5 + (pVal >= 4 ? 1 : 0) 
-      }));
+      setStats(prev => ({ count0_1: prev.count0_1 + (pVal <= 1 ? 1 : 0), count2_3: prev.count2_3 + (pVal >= 2 && pVal <= 3 ? 1 : 0), count4_5: prev.count4_5 + (pVal >= 4 ? 1 : 0) }));
       const gainMap =[-1.0, -0.6, -0.2, 0.2, 0.6, 1.0];
       setCultivationGain(prev => prev + gainMap[pVal]);
-      setSessionResults(prev =>[...prev, { phrase: currentPhrase, prof: pVal }]);
+      setSessionResults(prev =>[...prev, { phrase: currentPhrase, prof: pVal, nscore: finalNScore }]);
     } else if (isWatch) {
-      setSessionResults(prev =>[...prev, { phrase: currentPhrase, prof: 'watch' }]);
+      setSessionResults(prev => [...prev, { phrase: currentPhrase, prof: 'watch', nscore: finalNScore }]);
     }
 
     const updatedPhrase: Phrase = { 
@@ -249,7 +238,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
 
     const updatedPhrases = deck.phrases.map(p => p.id === activeId ? updatedPhrase : p);
     
-    let nextCoolingPool = [...(deck.coolingPool || [])];
+    let nextCoolingPool =[...(deck.coolingPool || [])];
     nextCoolingPool.forEach(c => c.wait -= 1);
     const ready = nextCoolingPool.filter(c => c.wait <= 0);
     nextCoolingPool = nextCoolingPool.filter(c => c.wait > 0);
@@ -279,9 +268,10 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
 
   const handleRequestExit = () => { setIsFinished(true); setPhase('REPORT'); };
   const handleFinalExit = () => { if (onSessionComplete) onSessionComplete(sessionDuration, stats, cultivationGain); onExit(); };
+  // src/components/StudySession.tsx (Part 2)
 
   // ==========================================
-  // ============  提前声明的内部组件  ==========
+  // ============  SVG 图表渲染函数  ==========
   // ==========================================
   const renderTrendChart = (data = masteryTrend, height = 100) => {
     if (data.length < 2) return null;
@@ -309,47 +299,64 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     );
   };
 
-  // ========== 主体渲染逻辑 ==========
-
-  // 1. 专属报告页
+  // ==========================================
+  // ============  1. 专属复盘报告页面  ==========
+  // ==========================================
   if (phase === 'REPORT') {
     const endMastery = masteryTrend.length > 0 ? masteryTrend[masteryTrend.length - 1].v : startMastery;
     const gain = endMastery - startMastery;
+    const activeTier = ALGO_TIERS[algoSettings.tierIdx];
 
     return (
       <div className="fixed inset-0 bg-slate-50 z-50 flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-300 overflow-y-auto custom-scrollbar">
-        <div className="max-w-2xl w-full bg-white rounded-3xl shadow-2xl p-8 flex flex-col space-y-6 my-8">
+        <div className="max-w-2xl w-full bg-white rounded-3xl shadow-2xl p-6 sm:p-10 flex flex-col space-y-6 my-8 border border-slate-100">
           <div className="text-center">
-            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4 text-emerald-600"><Trophy className="w-8 h-8" /></div>
-            <h2 className="text-3xl font-black text-slate-800">学习报告</h2>
-            <p className="text-slate-400 font-bold text-sm uppercase tracking-widest mt-1">{deck.name}</p>
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4 text-emerald-600"><Trophy size={32} /></div>
+            <h2 className="text-3xl font-black text-slate-800">背诵结算</h2>
+            <p className="text-slate-400 font-bold text-sm uppercase tracking-widest mt-1">{deck.name} · {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
           </div>
           
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-center">
-              <div className="text-xs text-slate-400 font-black uppercase tracking-widest mb-1">本次学习总计</div>
+              <div className="text-xs text-slate-400 font-black uppercase tracking-widest mb-1">本次复习</div>
               <div className="text-3xl font-black text-slate-800">{stats.count0_1 + stats.count2_3 + stats.count4_5} <span className="text-sm text-slate-400">词</span></div>
               <div className="text-xs font-bold mt-2 flex justify-center gap-2 whitespace-nowrap">
-                <span className="text-emerald-500">{stats.count4_5} 优</span>
-                <span className="text-slate-300">|</span>
-                <span className="text-amber-500">{stats.count2_3} 中</span>
-                <span className="text-slate-300">|</span>
-                <span className="text-rose-500">{stats.count0_1} 差</span>
+                <span className="text-emerald-500">{stats.count4_5} <span className="text-[10px]">优</span></span>
+                <span className="text-slate-300">/</span>
+                <span className="text-amber-500">{stats.count2_3} <span className="text-[10px]">中</span></span>
+                <span className="text-slate-300">/</span>
+                <span className="text-rose-500">{stats.count0_1} <span className="text-[10px]">差</span></span>
               </div>
             </div>
             <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-center flex flex-col justify-center">
-              <div className="text-xs text-slate-400 font-black uppercase tracking-widest mb-1">本次获得修为</div>
-              <div className={`text-3xl font-black ${cultivationGain >= 0 ? 'text-indigo-600' : 'text-rose-500'}`}>
-                {cultivationGain > 0 ? '+' : ''}{cultivationGain.toFixed(1)}
-              </div>
-              <div className="text-[10px] font-bold text-slate-400 mt-2">精确根据打分累计</div>
+              <div className="text-xs text-slate-400 font-black uppercase tracking-widest mb-1">专注时长</div>
+              <div className="text-3xl font-black text-slate-800">{formatFullTime(sessionDuration)}</div>
+            </div>
+          </div>
+
+          {/* 策略面板 (ALGORITHM) */}
+          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+            <div className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-3">使用的策略 ALGORITHM</div>
+            <div className="space-y-2 text-xs font-bold text-slate-600">
+               <div className="flex justify-between items-center">
+                  <span>正确 Correct:</span>
+                  <span className="text-emerald-600 font-black flex items-center gap-1">{activeTier.name} <span className="opacity-60 text-[10px] font-medium">x{activeTier.base}</span></span>
+               </div>
+               <div className="flex justify-between items-center">
+                  <span>冻结 Freeze:</span>
+                  <span className={`font-black ${algoSettings.allowFreeze ? 'text-sky-500' : 'text-slate-400'}`}>{algoSettings.allowFreeze ? 'ENABLED' : 'DISABLED'}</span>
+               </div>
+               <div className="flex justify-between items-center">
+                  <span>单日容量 Cap:</span>
+                  <span className="text-indigo-600 font-black">{algoSettings.cap}</span>
+               </div>
             </div>
           </div>
           
           <div className="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <span className="text-xs font-black text-indigo-900 uppercase tracking-widest block mb-1">掌握度变化 Mastery Gain</span>
+                <span className="text-xs font-black text-indigo-900 uppercase tracking-widest block mb-1">掌握度变化 MASTERY GAIN</span>
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
                   <span>{startMastery.toFixed(2)}%</span>
                   <span className="text-slate-300">→</span>
@@ -361,21 +368,18 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
             {renderTrendChart(masteryTrend, 120)}
           </div>
 
+          {/* 错题/复盘回顾列表 (严格按照 nscore 升序排序) */}
           {sessionResults.length > 0 && (
             <div className="border-t border-slate-100 pt-6">
-               <h3 className="text-sm font-black text-slate-800 mb-4 flex items-center gap-2"><ListOrdered className="w-4 h-4"/> 详细复盘 (Review Details)</h3>
+               <h3 className="text-sm font-black text-slate-800 mb-4 flex items-center gap-2"><ListOrdered size={16} className="text-indigo-500"/> 详细复盘 (Review Details)</h3>
                <div className="max-h-64 overflow-y-auto space-y-2 custom-scrollbar pr-2">
-                  {sessionResults.slice().sort((a,b) => {
-                      const scoreA = a.prof === 'watch' ? 2.5 : a.prof;
-                      const scoreB = b.prof === 'watch' ? 2.5 : b.prof;
-                      return scoreA - scoreB;
-                  }).map((res, i) => (
-                      <div key={i} className="flex justify-between items-center p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  {sessionResults.slice().sort((a,b) => a.nscore - b.nscore).map((res, i) => (
+                      <div key={i} className="flex justify-between items-center p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-indigo-100 transition-colors">
                           <div className="flex flex-col min-w-0 pr-4">
-                              <span className="font-bold text-base text-slate-700 truncate">{res.phrase.chinese}</span>
-                              <span className="text-sm font-medium text-slate-500 truncate">{res.phrase.english}</span>
+                              <span className="font-bold text-sm text-slate-700 truncate">{res.phrase.chinese}</span>
+                              <span className="text-xs font-medium text-slate-500 truncate mt-0.5">{res.phrase.english}</span>
                           </div>
-                          <div className={`px-3 py-1.5 rounded-lg text-sm font-black shrink-0 ${res.prof === 'watch' ? 'bg-slate-200 text-slate-600' : res.prof >= 4 ? 'bg-emerald-100 text-emerald-700' : res.prof >= 2 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
+                          <div className={`px-3 py-1.5 rounded-lg text-xs font-black shrink-0 shadow-sm ${res.prof === 'watch' ? 'bg-slate-200 text-slate-600' : res.prof >= 4 ? 'bg-emerald-100 text-emerald-700' : res.prof >= 2 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
                               {res.prof === 'watch' ? '观望' : `${res.prof} 分`}
                           </div>
                       </div>
@@ -383,13 +387,16 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                </div>
             </div>
           )}
-          <Button fullWidth onClick={handleFinalExit} className="py-4 text-lg font-black rounded-2xl shadow-xl mt-4">确认返回主页</Button>
+
+          <Button fullWidth onClick={handleFinalExit} className="py-4 text-base font-black rounded-2xl shadow-xl mt-4 bg-indigo-600 border-0 text-white hover:bg-indigo-700">确认完成</Button>
         </div>
       </div>
     );
   }
 
-  // 2. 异常数据与冷却池拦截
+  // ==========================================
+  // ============  2. 异常数据拦截与冷却池  ==========
+  // ==========================================
   if (!currentPhrase) {
     if (deck.coolingPool && deck.coolingPool.length > 0) {
       return (
@@ -398,14 +405,14 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
             <div className="w-16 h-16 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Waves className="w-8 h-8 text-sky-500" />
             </div>
-            <h2 className="text-2xl font-black text-slate-800 mb-2">发现冻结词条</h2>
-            <p className="text-sm text-slate-500 mb-6 font-medium">主队列已排空，但仍有 <span className="text-sky-500 font-black text-lg">{deck.coolingPool.length}</span> 个词条在冷却池中。</p>
+            <h2 className="text-2xl font-black text-slate-800 mb-2">检查来源 (Check Source)</h2>
+            <p className="text-sm text-slate-500 mb-6 font-medium">主队列已排空，后台还有 <span className="text-sky-500 font-black text-lg">{deck.coolingPool.length}</span> 个词条处于冷却期。</p>
             <Button fullWidth onClick={() => {
                 const awakenedIds = deck.coolingPool!.map(c => c.id);
-                onUpdateDeck({ ...deck, queue: awakenedIds, coolingPool: [] });
+                onUpdateDeck({ ...deck, queue: awakenedIds, coolingPool:[] });
                 setActiveId(awakenedIds[0]); 
-            }} className="py-4 text-lg font-black bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-200 border-0 text-white">立即全部唤醒</Button>
-            <Button fullWidth variant="ghost" onClick={handleRequestExit} className="mt-3">退出并查看报告</Button>
+            }} className="py-4 text-lg font-black bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-200 border-0 text-white">立即唤醒</Button>
+            <Button fullWidth variant="ghost" onClick={handleRequestExit} className="mt-3 text-slate-400">退出查看报告</Button>
           </div>
         </div>
       );
@@ -419,7 +426,9 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     );
   }
 
-  // 3. 计算常规界面的派生数据
+  // ==========================================
+  // ============  3. 主复习面板 UI  ==========
+  // ==========================================
   const liveMasteryValue = masteryTrend.length > 0 ? masteryTrend[masteryTrend.length - 1].v : startMastery;
   const isEnToCn = deck.studyMode === 'EN_CN';
   const questionText = isEnToCn ? currentPhrase.english : currentPhrase.chinese;
@@ -433,70 +442,79 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
   const currentBackDisplay = customBack ?? (prof !== null ? computedBack : watchBackValue);
   const isNowFrozen = algoSettings.allowFreeze && currentBackDisplay > (deck.queue.length - 1);
 
-  // 4. 正常复习主 UI 渲染
   return (
     <div className="fixed inset-0 bg-slate-50 z-[100] flex flex-col h-full overflow-hidden">
       
-      {/* === 顶部控制栏 === */}
+      {/* 顶栏控制区 - 完美复刻带进度条的紧凑设计 */}
       <div className="bg-white shadow-sm shrink-0 relative z-[60]">
         <div className="flex items-center justify-between px-3 py-1.5 h-12">
           <button onClick={handleRequestExit} className="p-1.5 text-slate-400 hover:text-slate-600 transition-all active:scale-90"><ArrowLeft size={20}/></button>
           
           <div className="flex-1 flex flex-col justify-center items-center max-w-[60%]">
-              <span className="text-[10px] text-slate-400 font-black truncate w-full text-center uppercase tracking-tighter">{deck.name}</span>
-              <div className="h-1 w-32 bg-slate-100 rounded-full overflow-hidden mt-1 relative">
-                <div className="absolute top-0 left-0 h-full transition-all duration-700 ease-out" style={{ width: `${liveMasteryValue}%`, backgroundColor: getDynamicColor(liveMasteryValue) }}></div>
+              <div className="flex justify-between items-end w-full max-w-[200px] mb-1">
+                <span className="text-[10px] text-slate-400 font-bold truncate pr-2 flex items-center gap-1"><Edit2 size={10} className="text-emerald-500"/> {deck.name}</span>
+                <span className="text-[10px] font-mono font-bold text-slate-400">{formatHeaderTime(sessionDuration)}</span>
+              </div>
+              <div className="h-1.5 w-full max-w-[200px] bg-slate-100 rounded-full overflow-hidden relative">
+                <div className="absolute top-0 left-0 h-full bg-lime-400 transition-all duration-700 ease-out" style={{ width: `${liveMasteryValue}%` }}></div>
+              </div>
+              <div className="flex justify-between items-start w-full max-w-[200px] mt-1 leading-none">
+                <span className="text-[10px] font-black text-lime-500">{liveMasteryValue.toFixed(2)}%</span>
+                <span className="text-[10px] font-bold text-slate-400 flex items-center">
+                  <span className="text-emerald-500">{stats.count4_5}</span>
+                  <span className="text-slate-300 mx-0.5">/</span><span className="text-amber-500">{stats.count2_3}</span>
+                  <span className="text-slate-300 mx-0.5">/</span><span className="text-rose-500">{stats.count0_1}</span>
+                </span>
               </div>
           </div>
           
           <div className="flex gap-0.5 shrink-0 items-center">
-            <div className="relative">
-              <button onClick={() => setShowAlgoMenu(!showAlgoMenu)} className={`p-1.5 rounded-lg transition-colors flex items-center gap-1 ${showAlgoMenu ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300'}`}><Settings2 size={18}/></button>
-              {showAlgoMenu && (
-                <div className="absolute top-full right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-[100] animate-in fade-in zoom-in-95">
-                  <div className="p-3 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Algorithm Settings</span>
-                    <button onClick={()=>setShowAlgoMenu(false)}><X size={14} className="text-slate-400"/></button>
-                  </div>
-                  <div className="p-4 border-b border-slate-100 max-h-[60vh] overflow-y-auto custom-scrollbar">
-                    <label className="text-xs font-bold text-slate-600 block mb-2">学习节奏 (C & base)</label>
-                    <div className="space-y-1 mb-4">
-                      {ALGO_TIERS.map((tier, idx) => (
-                        <button key={idx} onClick={() => setAlgoSettings({ ...algoSettings, tierIdx: idx })} className={`w-full text-left px-3 py-2 text-xs font-bold flex items-center justify-between rounded-lg transition-all ${algoSettings.tierIdx === idx ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}>
-                          <div>{tier.name} <span className="opacity-50 text-[9px] ml-1">C:{tier.C}, b:{tier.base}</span></div>
-                          {algoSettings.tierIdx === idx && <div className="w-2 h-2 rounded-full bg-indigo-500"></div>}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                      <label className="flex items-center justify-between cursor-pointer">
-                        <div>
-                          <div className="text-xs font-bold text-slate-700 flex items-center gap-2">允许词条冻结 {algoSettings.allowFreeze && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500"/>}</div>
-                          <div className="text-[9px] font-bold text-slate-400 mt-0.5">后推超出队列时，将其冻结在后台</div>
-                        </div>
-                        <div className={`w-10 h-5 rounded-full transition-colors relative shadow-inner ${algoSettings.allowFreeze ? 'bg-emerald-500' : 'bg-slate-300'}`}>
-                           <div className={`absolute top-1 w-3 h-3 rounded-full bg-white shadow transition-transform ${algoSettings.allowFreeze ? 'left-6' : 'left-1'}`}></div>
-                        </div>
-                        <input type="checkbox" checked={algoSettings.allowFreeze} onChange={e => setAlgoSettings({...algoSettings, allowFreeze: e.target.checked})} className="hidden" />
-                      </label>
-                    </div>
-                    <label className="text-xs font-bold text-slate-600 block mb-2">Cap (每日复习基准容量)</label>
-                    <input type="number" min="10" value={algoSettings.cap} onChange={(e) => setAlgoSettings({ ...algoSettings, cap: Math.max(10, parseInt(e.target.value) || 100) })} className="w-full p-2 border border-slate-200 rounded-lg text-sm font-black outline-none focus:border-indigo-500 mb-4" />
-                    <label className="text-xs font-bold text-slate-600 block mb-2">题目限时 (秒，0为不限)</label>
-                    <input type="number" min="0" value={algoSettings.timeLimit} onChange={(e) => setAlgoSettings({ ...algoSettings, timeLimit: Math.max(0, parseInt(e.target.value) || 0) })} className="w-full p-2 border border-slate-200 rounded-lg text-sm font-black outline-none focus:border-indigo-500" />
-                  </div>
-                </div>
-              )}
-            </div>
-            <button onClick={()=>setShowStats(!showStats)} className={`p-1.5 rounded-lg transition-colors ${showStats ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300'}`}><BarChart2 size={18}/></button>
-            <button onClick={()=>setShowQueue(!showQueue)} className={`p-1.5 rounded-lg transition-colors relative ${showQueue ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300'}`}><ListOrdered size={18}/></button>
+            <button onClick={() => setShowAlgoMenu(!showAlgoMenu)} className={`p-1.5 rounded-lg transition-colors ${showAlgoMenu ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300 hover:text-slate-500'}`}><Settings2 size={18}/></button>
+            <button onClick={()=>setShowStats(!showStats)} className={`p-1.5 rounded-lg transition-colors ${showStats ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300 hover:text-slate-500'}`}><BarChart2 size={18}/></button>
+            <button onClick={()=>setShowQueue(!showQueue)} className={`p-1.5 rounded-lg transition-colors relative ${showQueue ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300 hover:text-slate-500'}`}><ListOrdered size={18}/></button>
           </div>
         </div>
+        
+        {/* 下拉设置面板 */}
+        {showAlgoMenu && (
+          <div className="absolute top-full right-2 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-50 animate-in fade-in zoom-in-95">
+            <div className="p-3 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Algorithm Settings</span>
+              <button onClick={()=>setShowAlgoMenu(false)}><X size={14} className="text-slate-400"/></button>
+            </div>
+            <div className="p-4 border-b border-slate-100 max-h-[60vh] overflow-y-auto custom-scrollbar">
+              <label className="text-xs font-bold text-slate-600 block mb-2">学习节奏 (C & base)</label>
+              <div className="space-y-1 mb-4">
+                {ALGO_TIERS.map((tier, idx) => (
+                  <button key={idx} onClick={() => setAlgoSettings({ ...algoSettings, tierIdx: idx })} className={`w-full text-left px-3 py-2 text-xs font-bold flex items-center justify-between rounded-lg transition-all ${algoSettings.tierIdx === idx ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}>
+                    <div>{tier.name} <span className="opacity-50 text-[9px] ml-1">C:{tier.C}, b:{tier.base}</span></div>
+                    {algoSettings.tierIdx === idx && <div className="w-2 h-2 rounded-full bg-indigo-500"></div>}
+                  </button>
+                ))}
+              </div>
+              <div className="mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <div className="text-xs font-bold text-slate-700 flex items-center gap-2">允许词条冻结 {algoSettings.allowFreeze && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500"/>}</div>
+                    <div className="text-[9px] font-bold text-slate-400 mt-0.5">后推超出队列时，将其冻结在后台</div>
+                  </div>
+                  <div className={`w-10 h-5 rounded-full transition-colors relative shadow-inner ${algoSettings.allowFreeze ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                     <div className={`absolute top-1 w-3 h-3 rounded-full bg-white shadow transition-transform ${algoSettings.allowFreeze ? 'left-6' : 'left-1'}`}></div>
+                  </div>
+                  <input type="checkbox" checked={algoSettings.allowFreeze} onChange={e => setAlgoSettings({...algoSettings, allowFreeze: e.target.checked})} className="hidden" />
+                </label>
+              </div>
+              <label className="text-xs font-bold text-slate-600 block mb-2">Cap (每日复习容量上限)</label>
+              <input type="number" min="10" value={algoSettings.cap} onChange={(e) => setAlgoSettings({ ...algoSettings, cap: Math.max(10, parseInt(e.target.value) || 100) })} className="w-full p-2 border border-slate-200 rounded-lg text-sm font-black outline-none focus:border-indigo-500 mb-4" />
+              <label className="text-xs font-bold text-slate-600 block mb-2">题目限时 (秒，0为不限)</label>
+              <input type="number" min="0" value={algoSettings.timeLimit} onChange={(e) => setAlgoSettings({ ...algoSettings, timeLimit: Math.max(0, parseInt(e.target.value) || 0) })} className="w-full p-2 border border-slate-200 rounded-lg text-sm font-black outline-none focus:border-indigo-500" />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 flex relative overflow-hidden">
-        
-        {/* === 左侧抽屉：分布大盘 === */}
+        {/* === 左侧状态大盘抽屉 === */}
         <div className={`absolute top-0 left-0 h-full w-[280px] bg-white border-r border-slate-100 shadow-xl transition-transform duration-300 z-[70] flex flex-col ${showStats ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="p-4 flex justify-between items-center bg-slate-50 border-b shrink-0">
             <h3 className="font-black text-slate-800 text-xs flex items-center gap-2"><BarChart2 size={16} className="text-indigo-500"/> 状态大盘</h3>
@@ -533,7 +551,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
           </div>
         </div>
 
-        {/* === 右侧抽屉：有序队列与冷却池 === */}
+        {/* === 右侧复习队列抽屉 === */}
         <div className={`absolute top-0 right-0 h-full w-[280px] bg-white border-l border-slate-100 shadow-xl transition-transform duration-300 z-[70] flex flex-col ${showQueue ? 'translate-x-0' : 'translate-x-full'}`}>
           <div className="p-4 flex justify-between items-center bg-slate-50 border-b shrink-0">
             <h3 className="font-black text-slate-800 text-xs flex items-center gap-2"><ListOrdered size={16} className="text-indigo-500"/> 复习队列</h3>
@@ -596,7 +614,9 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
             ) : (
               <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8 flex flex-col items-center w-full relative">
                 
+                {/* 题目展示区 */}
                 <div className="w-full flex flex-col items-center text-center pt-2 mb-4">
+                  {/* QUESTION 阶段不显示 Score */}
                   {phase === 'ANSWER' && (
                     <div className="flex items-center gap-1.5 mb-2 bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-full animate-in fade-in zoom-in-95">
                       <span className="text-[8px] font-black text-slate-300 uppercase">Score:</span>
@@ -615,6 +635,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                   )}
                 </div>
 
+                {/* 答案与打分面板 */}
                 {phase === 'ANSWER' && (
                   <div className="w-full flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-300 pb-2 mt-auto">
                     <div className="text-center py-2 px-4 rounded-xl w-full mb-3 bg-indigo-50/40 border border-indigo-100/50 shadow-sm"><p className="text-xl font-black text-indigo-600 leading-snug break-words">{renderFormattedText(answerText)}</p></div>
@@ -625,13 +646,17 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                       </div>
                     )}
                     <div className="w-full space-y-3">
+                      
+                      {/* 难度 */}
                       <div className="bg-slate-50/80 p-2 rounded-xl border border-slate-100 flex justify-between items-center gap-2 shadow-sm">
                         <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest shrink-0 ml-1">难度 {diff}</span>
                         <div className="flex gap-0.5 flex-1">
                           {[0, 1, 2, 3, 4, 5].map(v => (<button key={v} onClick={() => setDiff(v)} className={`flex-1 py-1 rounded-lg font-black text-[10px] transition-all border ${diff === v ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-400'}`}>{v}</button>))}
                         </div>
                       </div>
-                      <div className="grid grid-cols-6 gap-1">
+                      
+                      {/* 熟练度 - 单行平铺 */}
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
                         {[0, 1, 2, 3, 4, 5].map(v => {
                           const disabled = isTimeout && v >= 4;
                           return (
@@ -643,18 +668,37 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                           );
                         })}
                       </div>
+
+                      {/* 满行 Log2 后推滑块面板 */}
                       <div className="bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 animate-in slide-in-from-bottom-1 shadow-sm">
                         <div className="flex justify-between items-start mb-2">
                             <div className="flex flex-col">
-                              <span className="text-[8px] font-black text-indigo-900 uppercase tracking-widest flex items-center gap-1"><Settings2 size={10}/> Score 轨迹预测</span>
+                              <span className="text-[8px] font-black text-indigo-900 uppercase tracking-widest flex items-center gap-1"><Settings2 size={10}/> 预期后推步数 (Back)</span>
                               <div className="text-[9px] font-bold mt-0.5 flex items-center gap-1">
+                                <span>Score 预测:</span>
                                 <span className="text-slate-400">{(activeScore ?? 0).toFixed(2)}</span><ArrowRight size={8} className="text-slate-300"/><span className={`font-black ${prof !== null ? (computedScore >= (activeScore ?? 0) ? 'text-emerald-600' : 'text-rose-500') : 'text-indigo-400'}`}>{(prof !== null ? computedScore : (activeScore ?? 0)).toFixed(2)}</span>
                               </div>
                             </div>
                             <div className="flex flex-col items-end">
-                                <div className="flex items-center gap-1.5"><span className="font-mono font-black text-[10px] text-indigo-600 w-6 text-right">{currentBackDisplay}</span><input type="range" min="0" max="1000" value={mapBackToSlider(currentBackDisplay)} onChange={e => setCustomBack(mapSliderToBack(parseInt(e.target.value)))} className={`w-16 h-1 rounded-lg appearance-none cursor-pointer ${isNowFrozen ? 'bg-sky-200 accent-sky-500' : 'bg-indigo-200 accent-indigo-600'}`} /></div>
-                                {isNowFrozen && <div className="text-sky-600 font-black text-[7px] mt-1 flex items-center gap-1 italic"><Waves size={8}/> FREEZING (+{currentBackDisplay - (deck.queue.length-1)})</div>}
+                                <div className="flex items-center gap-1.5"><span className="font-mono font-black text-[10px] text-indigo-600 w-8 text-right">{currentBackDisplay}</span>
+                                  {customBack !== null && (
+                                    <button onClick={() => setCustomBack(null)} className="p-1 text-slate-400 hover:text-indigo-600 bg-white rounded-md transition-colors shadow-sm border border-slate-200" title="恢复系统计算">
+                                      <RefreshCw size={12}/>
+                                    </button>
+                                  )}
+                                </div>
+                                {isNowFrozen && <div className="text-sky-600 font-black text-[7px] mt-1 flex items-center gap-1 italic"><Waves size={8}/> 冻结冷却 (+{currentBackDisplay - (deck.queue.length-1)})</div>}
                             </div>
+                        </div>
+                        <input type="range" min="0" max="1000" step="1" 
+                          value={mapBackToSlider(currentBackDisplay)} 
+                          onChange={e => setCustomBack(mapSliderToBack(parseInt(e.target.value)))}
+                          className={`w-full h-1 mt-1 rounded-lg appearance-none cursor-pointer ${isNowFrozen ? 'bg-sky-200 accent-sky-500' : 'bg-indigo-200 accent-indigo-600'}`} 
+                        />
+                        <div className="flex justify-between text-[7px] font-black text-slate-400 mt-1 px-0.5 tracking-widest uppercase">
+                          <span>1</span>
+                          <span className={isNowFrozen ? "text-sky-400" : ""}>{isNowFrozen ? "FREEZING ZONE" : "LOG2 SCALE"}</span>
+                          <span>100K+</span>
                         </div>
                       </div>
                     </div>
