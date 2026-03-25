@@ -225,6 +225,7 @@ export const ExamSession: React.FC<ExamSessionProps> = ({
       setCultivationGain(prev => prev + gainMap[prof]);
     }
 
+    const isCleared = finalBack > algoSettings.cap;
     const updatedPhrase: Phrase = {
       ...currentPhrase,
       score: isWatch ? currentPhrase.score : newScore,
@@ -233,7 +234,8 @@ export const ExamSession: React.FC<ExamSessionProps> = ({
       back: finalBack,
       totalReviews: currentPhrase.totalReviews + 1,
       mastery: calculateMastery(getNScore(isWatch ? (currentPhrase.score ?? 0) : newScore!, diff)),
-      lastReviewedAt: Date.now()
+      lastReviewedAt: Date.now(),
+      clearedDate: isCleared ? todayDays : currentPhrase.clearedDate
     };
 
     // 记录结果（注意考试期间不立刻触发 onUpdateDeck 改变队列）
@@ -453,7 +455,7 @@ export const ExamSession: React.FC<ExamSessionProps> = ({
 
               {/* 题目 */}
               <div className="w-full flex flex-col items-center text-center pt-4 mb-6">
-                <h1 className="text-3xl sm:text-4xl font-black text-slate-800 leading-snug break-words max-w-full">
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-800 leading-snug break-words max-w-full">
                   {renderFormattedText(questionText)}
                 </h1>
                 
@@ -474,7 +476,7 @@ export const ExamSession: React.FC<ExamSessionProps> = ({
               {step === 'ANSWER' && (
                 <div className="w-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300 pb-4 mt-auto">
                   <div className="text-center py-2 px-4 rounded-xl w-full mb-4">
-                    <p className="text-3xl font-black text-indigo-600 leading-snug break-words max-w-full inline-block">
+                    <p className="text-xl sm:text-2xl font-black text-indigo-600 leading-snug break-words max-w-full inline-block">
                       {renderFormattedText(answerText)}
                     </p>
                   </div>
