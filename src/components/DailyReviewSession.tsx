@@ -5,7 +5,8 @@ import { Deck, Phrase } from '../types';
 import { Button } from './Button';
 import { 
   ArrowLeft, Settings2, RefreshCw, Eye, ArrowRight, Clock, AlertCircle, 
-  Trophy, XCircle, ListOrdered, BarChart2, X, StickyNote, CheckCircle2 
+  Trophy, XCircle, ListOrdered, BarChart2, X, StickyNote, CheckCircle2,
+  Waves, ThermometerSnowflake
 } from 'lucide-react';
 import { 
   calculateNextState, calculateBack, calculateWatchBack, 
@@ -72,12 +73,13 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
   // === 1. 初始化与队列 ===
   const [workingDecks, setWorkingDecks] = useState<Deck[]>(selectedDecks);
   const [dailyQueue, setDailyQueue] = useState<DailyQueueItem[]>([]);
+  const [coolingPool, setCoolingPool] = useState<(DailyQueueItem & { wait: number })[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const [totalPending, setTotalPending] = useState(0);
 
   useEffect(() => {
     if (isInitialized) return;
-    const initialQueue: DailyQueueItem[] = [];
+    const initialQueue: DailyQueueItem[] =[];
     workingDecks.forEach(deck => {
       deck.phrases.forEach(p => {
         if (p.score !== undefined && (p.back || 0) <= 0) {
@@ -98,7 +100,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
   const [phase, setPhase] = useState<'QUESTION' | 'ANSWER' | 'REPORT'>('QUESTION');
   const [isFinished, setIsFinished] = useState(false);
   
-  const [algoSettings, setAlgoSettings] = useState(() => {
+  const[algoSettings, setAlgoSettings] = useState(() => {
     try {
       const saved = localStorage.getItem(ALGO_SETTINGS_KEY);
       return saved ? JSON.parse(saved) : { tierIdx: 2, cap: 100, timeLimit: 10, allowFreeze: true };
@@ -109,7 +111,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
 
   const [showAlgoMenu, setShowAlgoMenu] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
-  const [showStats, setShowStats] = useState(false);
+  const[showStats, setShowStats] = useState(false);
   
   const [sessionDuration, setSessionDuration] = useState(0);
   const [timeLeft, setTimeLeft] = useState<number>(algoSettings.timeLimit);
@@ -119,11 +121,11 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
   const [diff, setDiff] = useState<number>(2.5);
   const [customBack, setCustomBack] = useState<number | null>(null);
   const [computedBack, setComputedBack] = useState<number>(1);
-  const [computedScore, setComputedScore] = useState<number>(0);
+  const[computedScore, setComputedScore] = useState<number>(0);
   const [isAntiTouchActive, setIsAntiTouchActive] = useState(false);
 
   const [stats, setStats] = useState({ count0_1: 0, count2_3: 0, count4_5: 0 });
-  const [cultivationGain, setCultivationGain] = useState<number>(0);
+  const[cultivationGain, setCultivationGain] = useState<number>(0);
   const [sessionResults, setSessionResults] = useState<{phrase: Phrase, prof: number | 'watch', isCleared: boolean}[]>([]);
 
   const timerRef = useRef<number | null>(null);
@@ -131,7 +133,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
 
   const activeItem = dailyQueue.length > 0 ? dailyQueue[0] : null;
   const activeDeck = useMemo(() => workingDecks.find(d => d.id === activeItem?.deckId), [workingDecks, activeItem]);
-  const currentPhrase = useMemo(() => activeDeck?.phrases.find(p => p.id === activeItem?.phraseId), [activeDeck, activeItem]);
+  const currentPhrase = useMemo(() => activeDeck?.phrases.find(p => p.id === activeItem?.phraseId),[activeDeck, activeItem]);
 
   useEffect(() => { localStorage.setItem(ALGO_SETTINGS_KEY, JSON.stringify(algoSettings)); }, [algoSettings]);
 
@@ -162,7 +164,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
       if (questionTimerRef.current) clearInterval(questionTimerRef.current);
     }
     return () => { if (questionTimerRef.current) clearInterval(questionTimerRef.current); };
-  }, [phase, algoSettings.timeLimit, isFinished, isInitialized, activeItem]);
+  },[phase, algoSettings.timeLimit, isFinished, isInitialized, activeItem]);
 
   const watchBackValue = useMemo(() => {
     if (!currentPhrase) return 1;
@@ -239,7 +241,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
         count2_3: prev.count2_3 + (prof >= 2 && prof <= 3 ? 1 : 0),
         count4_5: prev.count4_5 + (prof >= 4 ? 1 : 0),
       }));
-      const gainMap = [-1.0, -0.6, -0.2, 0.2, 0.6, 1.0];
+      const gainMap =[-1.0, -0.6, -0.2, 0.2, 0.6, 1.0];
       setCultivationGain(prev => prev + gainMap[prof]);
     }
 
@@ -263,15 +265,35 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
     setWorkingDecks(updatedWorkingDecks);
     onUpdateDecks(updatedWorkingDecks); 
 
+    let nextCoolingPool = [...coolingPool];
+    nextCoolingPool.forEach(c => c.wait -= 1);
+    const ready = nextCoolingPool.filter(c => c.wait <= 0);
+    nextCoolingPool = nextCoolingPool.filter(c => c.wait > 0);
+
     let newDailyQueue = [...dailyQueue];
     newDailyQueue.shift(); 
+    newDailyQueue.push(...ready);
 
     const isCleared = finalBack > algoSettings.cap;
     if (!isCleared) {
-      const insertIdx = Math.min(finalBack, newDailyQueue.length);
-      newDailyQueue.splice(insertIdx, 0, activeItem);
+      if (algoSettings.allowFreeze && finalBack > newDailyQueue.length) {
+        nextCoolingPool.push({ ...activeItem, wait: finalBack - newDailyQueue.length });
+      } else {
+        const insertIdx = Math.min(finalBack, newDailyQueue.length);
+        newDailyQueue.splice(insertIdx, 0, activeItem);
+      }
     } 
     
+    if (newDailyQueue.length === 0 && nextCoolingPool.length > 0) {
+      const minWait = Math.min(...nextCoolingPool.map(c => c.wait));
+      nextCoolingPool.forEach(c => c.wait -= minWait);
+      const awakened = nextCoolingPool.filter(c => c.wait <= 0);
+      nextCoolingPool = nextCoolingPool.filter(c => c.wait > 0);
+      newDailyQueue.push(...awakened);
+    }
+
+    setCoolingPool(nextCoolingPool);
+
     setSessionResults(prev => {
       const existingIdx = prev.findIndex(r => r.phrase.id === updatedPhrase.id);
       const newItem = { phrase: updatedPhrase, prof: isWatch ? 'watch' as const : prof!, isCleared };
@@ -290,7 +312,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
       setProf(null);
       setCustomBack(null);
     }
-  },[currentPhrase, activeDeck, activeItem, isAntiTouchActive, algoSettings, diff, customBack, prof, dailyQueue, workingDecks, onUpdateDecks, watchBackValue, computedBack, computedScore]);
+  },[currentPhrase, activeDeck, activeItem, isAntiTouchActive, algoSettings, diff, customBack, prof, dailyQueue, coolingPool, workingDecks, onUpdateDecks, watchBackValue, computedBack]);
 
   const handleRequestExit = () => { setIsFinished(true); setPhase('REPORT'); };
   const handleFinalExit = () => { if (onSessionComplete) onSessionComplete(sessionDuration, stats, cultivationGain); onExit(); };
@@ -301,13 +323,14 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-white z-[200]">
         <div className="flex flex-col items-center gap-4">
-          <RefreshCw className="w-10 h-10 text-rose-500 animate-spin" />
+          <RefreshCw className="w-10 h-10 text-indigo-500 animate-spin" />
           <div className="text-xl font-black text-slate-400 tracking-widest">正在萃取待复习词条...</div>
         </div>
       </div>
     );
   }
 
+  // 1. 专属的复盘报告页面
   if (phase === 'REPORT') {
     const clearedCount = totalPending - dailyQueue.length;
     const progressPercent = (clearedCount / totalPending) * 100;
@@ -317,53 +340,54 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
         <div className="max-w-2xl w-full bg-white rounded-3xl shadow-2xl p-5 sm:p-8 flex flex-col space-y-4 my-2 sm:my-auto border border-slate-100">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-rose-100 rounded-full text-rose-500 shadow-sm"><Trophy size={20} /></div>
+              <div className="p-2.5 bg-indigo-100 rounded-full text-indigo-600 shadow-sm"><Trophy size={20} /></div>
               <div><h2 className="text-lg font-black text-slate-800 leading-tight">每日大盘结算</h2><span className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">Daily Review Summary</span></div>
             </div>
             <span className="text-xs font-mono font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md">{new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
           </div>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center flex flex-col justify-center">
-              <div className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">通关进度</div>
-              <div className="text-3xl font-black text-slate-800">{clearedCount} <span className="text-xl text-slate-400">/ {totalPending}</span></div>
-              <div className="w-full bg-slate-200 h-1.5 rounded-full mt-3 overflow-hidden">
-                <div className="bg-rose-500 h-full transition-all duration-1000" style={{ width: `${progressPercent}%` }}></div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100">
+              <span className="text-[9px] text-slate-400 font-black uppercase block mb-1">通关进度</span>
+              <span className="text-xl font-black text-slate-800">{clearedCount} <span className="text-[9px] text-slate-400">/ {totalPending} 词</span></span>
+              <div className="w-full bg-slate-200 h-1.5 rounded-full mt-2 overflow-hidden mx-auto max-w-[80%]">
+                <div className="bg-indigo-500 h-full transition-all duration-1000" style={{ width: `${progressPercent}%` }}></div>
               </div>
             </div>
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center flex flex-col justify-center">
-              <div className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">本次累计修为</div>
-              <div className={`text-3xl font-black ${cultivationGain >= 0 ? 'text-indigo-600' : 'text-rose-500'}`}>
-                {cultivationGain > 0 ? '+' : ''}{cultivationGain.toFixed(1)}
-              </div>
-              <div className="text-[10px] font-bold text-slate-400 mt-2">基于本次所有交互打分</div>
+            <div className="bg-slate-50 p-3 rounded-2xl text-center flex flex-col justify-center border border-slate-100">
+              <span className="text-[9px] text-slate-400 font-black uppercase mb-1">专注时长</span>
+              <span className="text-xl font-black text-slate-800">{formatFullTime(sessionDuration)}</span>
+            </div>
+            <div className="bg-indigo-50/60 p-3 rounded-2xl text-center flex flex-col justify-center border border-indigo-100">
+              <span className="text-[9px] text-indigo-500 font-black uppercase mb-1">修为收益</span>
+              <span className={`text-xl font-black ${cultivationGain >= 0 ? 'text-indigo-600' : 'text-rose-500'}`}>{cultivationGain > 0 ? '+' : ''}{cultivationGain.toFixed(1)}</span>
             </div>
           </div>
 
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-            <div className="flex justify-between items-center mb-3">
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <div className="flex justify-between items-center mb-2">
               <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">打分分布 (含重刷次数)</span>
               <span className="text-[10px] font-bold text-slate-800">总计 {stats.count0_1 + stats.count2_3 + stats.count4_5} 次交互</span>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 text-center">
-                <div className="text-xl font-black text-emerald-600">{stats.count4_5}</div>
-                <div className="text-[10px] font-bold text-emerald-700/60 uppercase">优秀</div>
+              <div className="bg-emerald-50 p-2 rounded-xl border border-emerald-100 text-center">
+                <div className="text-lg font-black text-emerald-600">{stats.count4_5}</div>
+                <div className="text-[9px] font-bold text-emerald-700/60 uppercase">优秀</div>
               </div>
-              <div className="bg-amber-50 p-3 rounded-xl border border-amber-100 text-center">
-                <div className="text-xl font-black text-amber-600">{stats.count2_3}</div>
-                <div className="text-[10px] font-bold text-amber-700/60 uppercase">一般</div>
+              <div className="bg-amber-50 p-2 rounded-xl border border-amber-100 text-center">
+                <div className="text-lg font-black text-amber-600">{stats.count2_3}</div>
+                <div className="text-[9px] font-bold text-amber-700/60 uppercase">一般</div>
               </div>
-              <div className="bg-rose-50 p-3 rounded-xl border border-rose-100 text-center">
-                <div className="text-xl font-black text-rose-600">{stats.count0_1}</div>
-                <div className="text-[10px] font-bold text-rose-700/60 uppercase">困难</div>
+              <div className="bg-rose-50 p-2 rounded-xl border border-rose-100 text-center">
+                <div className="text-lg font-black text-rose-600">{stats.count0_1}</div>
+                <div className="text-[9px] font-bold text-rose-700/60 uppercase">困难</div>
               </div>
             </div>
           </div>
 
           {sessionResults.length > 0 && (
             <div className="border-t border-slate-100 pt-4">
-               <h3 className="text-xs font-black text-slate-800 mb-3 flex items-center gap-2"><ListOrdered size={14} className="text-rose-500"/> 详细复盘记录</h3>
+               <h3 className="text-xs font-black text-slate-800 mb-3 flex items-center gap-2"><ListOrdered size={14} className="text-indigo-500"/> 详细复盘记录</h3>
                <div className="max-h-56 overflow-y-auto space-y-1.5 custom-scrollbar pr-1">
                   {sessionResults.slice().sort((a,b) => {
                       const scoreA = a.prof === 'watch' ? 2.5 : a.prof;
@@ -376,7 +400,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                           <span className="font-bold text-sm text-slate-700 truncate">{res.phrase.chinese}</span>
                           {res.isCleared ? 
                             <span className="text-[9px] font-black bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">已通关</span> : 
-                            <span className="text-[9px] font-black bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded border border-rose-200 shrink-0">队中重现</span>
+                            <span className="text-[9px] font-black bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0">队中重现</span>
                           }
                         </div>
                         <span className="text-[10px] font-medium text-slate-400 truncate">{res.phrase.english}</span>
@@ -393,7 +417,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
             </div>
           )}
 
-          <Button fullWidth onClick={handleFinalExit} className="py-4 text-base font-black rounded-2xl shadow-xl mt-2 bg-slate-900 text-white hover:bg-slate-800 transition-all">
+          <Button fullWidth onClick={handleFinalExit} className="py-4 text-base font-black rounded-2xl shadow-xl mt-2 bg-indigo-600 border-0 text-white hover:bg-indigo-700 transition-all">
             保存并返回主页
           </Button>
         </div>
@@ -401,20 +425,41 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
     );
   }
 
-  // 正常复习状态
-  if (!currentPhrase || !activeDeck) return null;
+  // 冷却池引导
+  if (!currentPhrase || !activeDeck) {
+    if (coolingPool && coolingPool.length > 0) {
+      return (
+        <div className="fixed inset-0 flex flex-col items-center justify-center bg-slate-50 z-[100] p-4 animate-in fade-in">
+          <div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-sm w-full animate-in zoom-in-95 border border-slate-100">
+            <Waves className="w-8 h-8 text-sky-500 mx-auto mb-3" />
+            <h2 className="text-xl font-black text-slate-800 mb-1">检查来源</h2>
+            <p className="text-xs text-slate-500 mb-6">当前队列已排空，但后台仍有 <span className="text-sky-500 font-black text-lg">{coolingPool.length}</span> 个词条正在冻结冷却中。</p>
+            <Button fullWidth onClick={() => {
+                const awakened = coolingPool.map(c => c);
+                setDailyQueue(awakened);
+                setCoolingPool([]);
+            }} className="py-4 text-lg font-black bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-200 border-0 text-white">立即全部唤醒并继续</Button>
+            <Button fullWidth variant="ghost" onClick={handleRequestExit} className="mt-3 text-sm text-slate-400">退出查看报告</Button>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  }
 
-  const isEnToCn_Mode = activeDeck.studyMode === 'EN_CN';
-  const questionText = isEnToCn_Mode ? currentPhrase.english : currentPhrase.chinese;
-  const answerText = isEnToCn_Mode ? currentPhrase.chinese : currentPhrase.english;
-
+  const isEnToCn = activeDeck.studyMode === 'EN_CN';
+  const questionText = isEnToCn ? currentPhrase.english : currentPhrase.chinese;
+  const answerText = isEnToCn ? currentPhrase.chinese : currentPhrase.english;
+  
   const progressPercent = Math.min(100, Math.max(0, ((totalPending - dailyQueue.length) / totalPending) * 100));
   const isNew = currentPhrase.score === undefined || currentPhrase.score === 0;
   const profLabelsNew =["完全没思路", "思路大体对", "缺东西", "差一点", "正确但不确定", "正确"];
   const profLabelsOld =["完全没印象", "印象不清楚", "缺东西", "差一点", "勉强想出", "快速想出"];
   const currentLabels = isNew ? profLabelsNew : profLabelsOld;
+  
   const currentBackDisplay = customBack ?? (prof !== null ? computedBack : watchBackValue);
   const isClearedDisplay = currentBackDisplay > algoSettings.cap;
+  const isNowFrozen = !isClearedDisplay && algoSettings.allowFreeze && currentBackDisplay > Math.max(0, dailyQueue.length - 1);
 
   return (
     <div className="fixed inset-0 bg-slate-50 z-[150] flex flex-col h-full overflow-hidden">
@@ -422,24 +467,24 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
       {/* 顶栏 */}
       <div className="bg-white shadow-sm shrink-0 relative z-[60]">
         <div className="flex items-center justify-between px-2 py-2">
-          <button onClick={handleRequestExit} className="p-2 text-slate-400 hover:text-rose-500 transition-all active:scale-90"><ArrowLeft size={20}/></button>
+          <button onClick={handleRequestExit} className="p-2 text-slate-400 hover:text-indigo-500 transition-all active:scale-90"><ArrowLeft size={20}/></button>
           <div className="flex-1 flex flex-col justify-center px-3 max-w-[65%]">
               <div className="flex justify-between items-center w-full mb-1.5">
                 <span className="text-xs text-slate-500 font-bold truncate pr-2">每日大盘 · {activeDeck.name}</span>
                 <span className="text-[10px] font-mono font-bold text-slate-400">{formatHeaderTime(sessionDuration)}</span>
               </div>
               <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden relative">
-                <div className="absolute top-0 left-0 h-full bg-rose-400 transition-all duration-700 ease-out" style={{ width: `${progressPercent}%` }}></div>
+                <div className="absolute top-0 left-0 h-full transition-all duration-700 ease-out" style={{ width: `${progressPercent}%`, backgroundColor: getDynamicColor(progressPercent) }}></div>
               </div>
               <div className="flex justify-between items-center w-full mt-1.5 leading-none">
-                <span className="text-[10px] font-black text-rose-500">{progressPercent.toFixed(1)}%</span>
+                <span className="text-[10px] font-black" style={{ color: getDynamicColor(progressPercent) }}>{progressPercent.toFixed(1)}%</span>
                 <span className="text-[9px] font-bold text-slate-400">剩余 {dailyQueue.length} 词</span>
               </div>
           </div>
           <div className="flex gap-0.5 shrink-0 items-center">
-            <button onClick={() => setShowAlgoMenu(!showAlgoMenu)} className={`p-1.5 rounded-lg transition-colors ${showAlgoMenu ? 'text-rose-600 bg-rose-50' : 'text-slate-300 hover:text-slate-500'}`}><Settings2 size={18}/></button>
-            <button onClick={()=>setShowStats(!showStats)} className={`p-1.5 rounded-lg transition-colors ${showStats ? 'text-rose-600 bg-rose-50' : 'text-slate-300 hover:text-slate-500'}`}><BarChart2 size={18}/></button>
-            <button onClick={()=>setShowQueue(!showQueue)} className={`p-1.5 rounded-lg transition-colors relative ${showQueue ? 'text-rose-600 bg-rose-50' : 'text-slate-300 hover:text-slate-500'}`}><ListOrdered size={18}/></button>
+            <button onClick={() => setShowAlgoMenu(!showAlgoMenu)} className={`p-1.5 rounded-lg transition-colors ${showAlgoMenu ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300 hover:text-slate-500'}`}><Settings2 size={18}/></button>
+            <button onClick={()=>setShowStats(!showStats)} className={`p-1.5 rounded-lg transition-colors ${showStats ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300 hover:text-slate-500'}`}><BarChart2 size={18}/></button>
+            <button onClick={()=>setShowQueue(!showQueue)} className={`p-1.5 rounded-lg transition-colors relative ${showQueue ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300 hover:text-slate-500'}`}><ListOrdered size={18}/></button>
           </div>
         </div>
         {showAlgoMenu && (
@@ -458,6 +503,13 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                   </button>
                 ))}
               </div>
+              <div className="mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <label className="flex items-center justify-between cursor-pointer group">
+                  <div><div className="text-xs font-bold text-slate-700 flex items-center gap-2">允许词条冻结 {algoSettings.allowFreeze && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500"/>}</div><div className="text-[9px] font-bold text-slate-400 mt-0.5">后推超出队列时，将其冻结在后台</div></div>
+                  <div className={`w-10 h-5 rounded-full transition-colors relative shadow-inner ${algoSettings.allowFreeze ? 'bg-emerald-500' : 'bg-slate-300'}`}><div className={`absolute top-1 w-3 h-3 rounded-full bg-white shadow transition-transform ${algoSettings.allowFreeze ? 'left-6' : 'left-1'}`}></div></div>
+                  <input type="checkbox" checked={algoSettings.allowFreeze} onChange={e => setAlgoSettings({...algoSettings, allowFreeze: e.target.checked})} className="hidden" />
+                </label>
+              </div>
               <label className="text-xs font-bold text-slate-600 block mb-2">Cap (每日复习通关门槛)</label>
               <input type="number" min="10" value={algoSettings.cap} onChange={(e) => setAlgoSettings({ ...algoSettings, cap: Math.max(10, parseInt(e.target.value) || 100) })} className="w-full p-2 border border-slate-200 rounded-lg text-sm font-black outline-none focus:border-indigo-500 mb-4" />
               <label className="text-xs font-bold text-slate-600 block mb-2">题目限时 (秒，0为不限)</label>
@@ -472,13 +524,13 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
         {/* 左侧抽屉：分布大盘 */}
         <div className={`absolute top-0 left-0 h-full w-[280px] bg-white border-r border-slate-100 shadow-xl transition-transform duration-300 z-[70] flex flex-col ${showStats ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="p-4 flex justify-between items-center bg-slate-50 border-b shrink-0">
-            <h3 className="font-black text-slate-800 text-sm flex items-center gap-2"><BarChart2 size={16} className="text-rose-500"/> 大盘统计</h3>
+            <h3 className="font-black text-slate-800 text-sm flex items-center gap-2"><BarChart2 size={16} className="text-indigo-500"/> 大盘统计</h3>
             <button onClick={()=>setShowStats(false)} className="p-1 hover:bg-slate-200 rounded-full transition-colors"><X size={18} className="text-slate-500"/></button>
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-6">
-            <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100">
-              <div className="text-[10px] font-black text-rose-400 uppercase tracking-widest mb-1">今日大盘通关率</div>
-              <div className="text-3xl font-black text-rose-600">{progressPercent.toFixed(1)}%</div>
+            <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
+              <div className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">今日大盘通关率</div>
+              <div className="text-3xl font-black text-indigo-600">{progressPercent.toFixed(1)}%</div>
             </div>
             <div className="space-y-4">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">本次修为累计</h4>
@@ -495,7 +547,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
         {/* 右侧抽屉：队列 */}
         <div className={`absolute top-0 right-0 h-full w-[280px] bg-white border-l border-slate-100 shadow-xl transition-transform duration-300 z-[70] flex flex-col ${showQueue ? 'translate-x-0' : 'translate-x-full'}`}>
           <div className="p-4 flex justify-between items-center bg-slate-50 border-b shrink-0">
-            <h3 className="font-black text-slate-800 text-sm flex items-center gap-2"><ListOrdered size={16} className="text-rose-500"/> 待通关列表</h3>
+            <h3 className="font-black text-slate-800 text-sm flex items-center gap-2"><ListOrdered size={16} className="text-indigo-500"/> 待通关列表</h3>
             <button onClick={()=>setShowQueue(false)} className="p-1 hover:bg-slate-200 rounded-full transition-colors"><X size={18} className="text-slate-500"/></button>
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
@@ -505,15 +557,33 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
               const isCurrent = item.phraseId === activeItem?.phraseId;
               const label = getPhraseLabel(p.score);
               return (
-                <div key={`${item.deckId}-${item.phraseId}-${idx}`} className={`flex items-center justify-between text-xs py-2 px-3 rounded-xl border transition-all ${isCurrent ? 'bg-rose-50 border-rose-200 shadow-sm scale-[1.02] z-10' : 'bg-white border-transparent hover:bg-slate-50'}`}>
+                <div key={`${item.deckId}-${item.phraseId}-${idx}`} className={`flex items-center justify-between text-xs py-2 px-3 rounded-xl border transition-all ${isCurrent ? 'bg-indigo-50 border-indigo-200 shadow-sm scale-[1.02] z-10' : 'bg-white border-transparent hover:bg-slate-50'}`}>
                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <span className={`font-black text-[10px] w-4 text-center shrink-0 ${isCurrent ? 'text-rose-600' : 'text-slate-300'}`}>{idx+1}</span>
-                    <div className={`truncate font-bold ${isCurrent ? 'text-rose-900' : 'text-slate-600'}`}>{p.chinese}</div>
+                    <span className={`font-black text-[10px] w-4 text-center shrink-0 ${isCurrent ? 'text-indigo-600' : 'text-slate-300'}`}>{idx+1}</span>
+                    <div className={`truncate font-bold ${isCurrent ? 'text-indigo-900' : 'text-slate-600'}`}>{p.chinese}</div>
                   </div>
                   <div className="px-1.5 py-0.5 rounded-md text-[9px] font-black text-white shrink-0 ml-2 shadow-sm" style={{backgroundColor: getScoreBadgeColor(p.score)}}>{label}</div>
                 </div>
               )
             })}
+            {coolingPool && coolingPool.length > 0 && (
+              <>
+                <div className="relative py-4"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-sky-100"></div></div><div className="relative flex justify-center"><span className="bg-white px-3 text-[9px] font-black text-sky-400 uppercase tracking-widest flex items-center gap-1.5"><ThermometerSnowflake size={12}/> Cooling Pool</span></div></div>
+                {[...coolingPool].sort((a,b)=>a.wait - b.wait).map((c, idx) => {
+                  const p = workingDecks.find(d => d.id === c.deckId)?.phrases.find(ph => ph.id === c.phraseId);
+                  if (!p) return null;
+                  return (
+                    <div key={`cool-${c.deckId}-${c.phraseId}-${idx}`} className="flex items-center justify-between py-2 px-3 opacity-60">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="font-black text-[10px] w-6 text-center shrink-0 text-sky-500 bg-sky-50 rounded-md border border-sky-100">{c.wait}</span>
+                        <div className="truncate font-bold text-xs text-slate-500">{p.chinese}</div>
+                      </div>
+                      <div className="px-1.5 py-0.5 rounded-md text-[8px] font-black text-white shrink-0 ml-2 opacity-50 shadow-sm" style={{backgroundColor: getScoreBadgeColor(p.score)}}>{getPhraseLabel(p.score)}</div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
           </div>
         </div>
 
@@ -532,7 +602,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                   {phase === 'QUESTION' && algoSettings.timeLimit > 0 && (
                     <div className="mt-8 flex flex-col items-center animate-in fade-in">
                       <div className={`text-[10px] font-black tabular-nums mb-1.5 ${isTimeout ? 'text-rose-500' : 'text-slate-400'}`}>{isTimeout ? '已超过限时' : `${timeLeft.toFixed(1)}s`}</div>
-                      <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden shadow-inner"><div className={`h-full transition-all duration-100 ease-linear ${isTimeout ? 'bg-rose-500' : 'bg-rose-400'}`} style={{ width: `${isTimeout ? 100 : (timeLeft / algoSettings.timeLimit) * 100}%` }} /></div>
+                      <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden shadow-inner"><div className={`h-full transition-all duration-100 ease-linear ${isTimeout ? 'bg-rose-500' : 'bg-indigo-400'}`} style={{ width: `${isTimeout ? 100 : (timeLeft / algoSettings.timeLimit) * 100}%` }} /></div>
                     </div>
                   )}
                 </div>
@@ -542,12 +612,12 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                     {currentPhrase.note && (
                       <div className="w-full bg-amber-50/50 p-4 rounded-xl border border-amber-100 text-left relative mb-5 shadow-sm"><div className="absolute top-4 left-4"><StickyNote size={16} className="text-amber-400" /></div><div className="pl-7 text-sm font-bold text-slate-600 whitespace-pre-wrap leading-normal">{renderFormattedText(cleanNote(currentPhrase.note))}</div></div>
                     )}
-                    <div className="text-center py-2 px-4 rounded-xl w-full mb-6"><p className="text-3xl font-black text-rose-600 leading-tight break-words">{renderFormattedText(answerText)}</p></div>
+                    <div className="text-center py-2 px-4 rounded-xl w-full mb-6"><p className="text-3xl font-black text-indigo-600 leading-tight break-words">{renderFormattedText(answerText)}</p></div>
                     <div className="w-full mt-auto space-y-4">
                       <div className="flex items-center gap-3 mb-2 pl-1">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">难度 {diff}</span>
                         <div className="flex gap-1 flex-1">
-                          {[0, 1, 2, 3, 4, 5].map(v => (<button key={v} onClick={() => setDiff(v)} className={`flex-1 py-1 rounded-lg font-black text-[10px] transition-all border-2 ${diff === v ? 'bg-rose-500 border-rose-500 text-white shadow-md transform scale-105' : 'bg-white border-slate-200 text-slate-400'}`}>{v}</button>))}
+                          {[0, 1, 2, 3, 4, 5].map(v => (<button key={v} onClick={() => setDiff(v)} className={`flex-1 py-1 rounded-lg font-black text-[10px] transition-all border-2 ${diff === v ? 'bg-indigo-500 border-indigo-500 text-white shadow-md transform scale-105' : 'bg-white border-slate-200 text-slate-400'}`}>{v}</button>))}
                         </div>
                       </div>
                       <div>
@@ -556,36 +626,38 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
                               const disabled = isTimeout && v >= 4;
                               return (
                                 <button key={v} disabled={disabled} onClick={() => setProf(v)} 
-                                  className={`flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-xl border-2 transition-all group ${disabled ? 'opacity-20 grayscale bg-slate-50 border-slate-100' : prof === v ? 'bg-rose-50 border-rose-500 scale-105 z-10 shadow-md' : 'bg-white border-slate-100 hover:border-rose-300'}`}>
-                                  <span className={`text-sm sm:text-base font-black ${prof === v ? 'text-rose-600' : 'text-slate-400'}`}>{v}</span>
-                                  <span className={`text-[8px] font-bold mt-1 leading-tight text-center w-full whitespace-normal break-words ${prof === v ? 'text-rose-700' : 'text-slate-500'}`} style={{ letterSpacing: '-0.5px' }}>{currentLabels[v]}</span>
+                                  className={`flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-xl border-2 transition-all group ${disabled ? 'opacity-20 grayscale bg-slate-50 border-slate-100' : prof === v ? 'bg-indigo-50 border-indigo-500 scale-105 z-10 shadow-md' : 'bg-white border-slate-100 hover:border-indigo-300'}`}>
+                                  <span className={`text-sm sm:text-base font-black ${prof === v ? 'text-indigo-600' : 'text-slate-400'}`}>{v}</span>
+                                  <span className={`text-[8px] font-bold mt-1 leading-tight text-center w-full whitespace-normal break-words ${prof === v ? 'text-indigo-700' : 'text-slate-500'}`} style={{ letterSpacing: '-0.5px' }}>{currentLabels[v]}</span>
                                 </button>
                               );
                             })}
                          </div>
                       </div>
-                      <div className="bg-rose-50/50 p-4 rounded-xl border border-rose-100 shadow-sm animate-in slide-in-from-bottom-2 mt-2 w-full">
+                      <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 shadow-sm animate-in slide-in-from-bottom-2 mt-2 w-full">
                         <div className="flex justify-between items-start mb-3">
                             <div className="flex flex-col">
-                              <span className="text-[10px] font-black text-rose-900 uppercase tracking-widest flex items-center gap-1.5"><Settings2 size={12}/> 预期后推 (BACK)</span>
+                              <span className="text-[10px] font-black text-indigo-900 uppercase tracking-widest flex items-center gap-1.5"><Settings2 size={12}/> 预期后推 (BACK)</span>
                               <div className="text-[11px] font-bold mt-1.5 flex items-center gap-1.5">
                                 <span className="text-slate-500">Score 预测:</span>
-                                <span className="text-slate-400">{(currentPhrase.score ?? 0).toFixed(2)}</span><ArrowRight size={10} className="text-slate-300"/><span className={`font-black ${prof !== null ? (computedScore >= (currentPhrase.score ?? 0) ? 'text-emerald-600' : 'text-rose-500') : 'text-rose-400'}`}>{(prof !== null ? computedScore : (currentPhrase.score ?? 0)).toFixed(2)}</span>
+                                <span className="text-slate-400">{(currentPhrase.score ?? 0).toFixed(2)}</span><ArrowRight size={10} className="text-slate-300"/><span className={`font-black ${prof !== null ? (computedScore >= (currentPhrase.score ?? 0) ? 'text-emerald-600' : 'text-rose-500') : 'text-indigo-400'}`}>{(prof !== null ? computedScore : (currentPhrase.score ?? 0)).toFixed(2)}</span>
                               </div>
                             </div>
                             <div className="flex flex-col items-end">
                                 <div className="flex items-center gap-2">
-                                  {customBack !== null && (<button onClick={() => setCustomBack(null)} className="p-1.5 text-slate-400 hover:text-rose-500 bg-white rounded-md transition-colors border" title="恢复"><RefreshCw size={14}/></button>)}
-                                  <input type="number" min="1" value={currentBackDisplay} onChange={e => setCustomBack(Math.max(1, parseInt(e.target.value) || 1))} className={`w-20 bg-white border-2 rounded-lg p-1.5 text-center font-mono font-black text-base outline-none transition-all shadow-sm ${isClearedDisplay ? 'border-emerald-300 text-emerald-600 focus:ring-2 ring-emerald-100' : 'border-rose-200 text-rose-600 focus:ring-2 ring-rose-100'}`} />
+                                  {customBack !== null && (<button onClick={() => setCustomBack(null)} className="p-1.5 text-slate-400 hover:text-indigo-500 bg-white rounded-md transition-colors border" title="恢复"><RefreshCw size={14}/></button>)}
+                                  <input type="number" min="1" value={currentBackDisplay} onChange={e => setCustomBack(Math.max(1, parseInt(e.target.value) || 1))} className={`w-20 bg-white border-2 rounded-lg p-1.5 text-center font-mono font-black text-base outline-none transition-all shadow-sm ${isClearedDisplay ? 'border-emerald-300 text-emerald-600 focus:ring-2 ring-emerald-100' : isNowFrozen ? 'border-sky-300 text-sky-600 focus:ring-2 ring-sky-100' : 'border-indigo-200 text-indigo-600 focus:ring-2 ring-indigo-100'}`} />
                                 </div>
                             </div>
                         </div>
-                        <input type="range" min="0" max="1000" step="1" value={mapBackToSlider(currentBackDisplay)} onChange={e => setCustomBack(mapSliderToBack(parseInt(e.target.value)))} className={`w-full h-1.5 mt-2 rounded-lg appearance-none cursor-pointer ${isClearedDisplay ? 'bg-emerald-200 accent-emerald-500' : 'bg-rose-200 accent-rose-600'}`} />
+                        <input type="range" min="0" max="1000" step="1" value={mapBackToSlider(currentBackDisplay)} onChange={e => setCustomBack(mapSliderToBack(parseInt(e.target.value)))} className={`w-full h-1.5 mt-2 rounded-lg appearance-none cursor-pointer ${isClearedDisplay ? 'bg-emerald-200 accent-emerald-500' : isNowFrozen ? 'bg-sky-200 accent-sky-500' : 'bg-indigo-200 accent-indigo-600'}`} />
                         <div className="flex justify-between text-[8px] font-black text-slate-400 mt-2 tracking-widest uppercase">
                           {isClearedDisplay ? (
                              <span className="text-emerald-500 font-bold flex items-center gap-1 w-full justify-center"><CheckCircle2 size={10}/> 达成通关条件！( &gt; {algoSettings.cap} )</span>
+                          ) : isNowFrozen ? (
+                             <><span>NEAR</span><span className="text-sky-500 font-bold flex items-center gap-1 animate-pulse"><Waves size={10}/> 将在队尾冻结冷却 (+{currentBackDisplay - (dailyQueue.length-1)}步)</span><span>FAR</span></>
                           ) : (
-                             <><span>NEAR</span><span className="text-rose-500 font-bold flex items-center gap-1 animate-pulse"><RefreshCw size={10}/> 将在队列中重现 (+{currentBackDisplay}步)</span><span>FAR</span></>
+                             <><span>NEAR</span><span className="text-indigo-500 font-bold flex items-center gap-1 animate-pulse"><RefreshCw size={10}/> 将在队列中重现 (+{currentBackDisplay}步)</span><span>FAR</span></>
                           )}
                         </div>
                       </div>
@@ -596,11 +668,11 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
             </div>
             <div className="p-3 sm:p-5 bg-white border-t border-slate-100 shrink-0">
               {phase === 'QUESTION' ? (
-                <Button fullWidth onClick={handleShowAnswer} className="py-4 text-lg font-black shadow-lg bg-rose-600 border-0 text-white hover:bg-rose-700 transition-all active:scale-95">查看答案</Button>
+                <Button fullWidth onClick={handleShowAnswer} className="py-4 text-lg font-black shadow-lg bg-indigo-600 border-0 text-white hover:bg-indigo-700 transition-all active:scale-95">查看答案</Button>
               ) : (
                 <div className="flex gap-2.5">
                   <button onClick={() => handleFinishCard(true)} className="flex-1 flex items-center justify-center gap-1.5 py-4 bg-slate-100 text-slate-600 rounded-xl font-black text-xs border-0 shadow-sm active:scale-95 transition-all"><Eye size={18}/> 观望 (W)</button>
-                  <Button disabled={prof === null || isAntiTouchActive} fullWidth onClick={() => handleFinishCard(false)} className={`flex-[2.5] py-4 text-lg font-black shadow-lg transition-all ${prof === null ? 'bg-slate-200 text-slate-400' : 'bg-rose-600 text-white shadow-rose-200/50'}`}>确认继续 (Enter) <ArrowRight size={20} className="ml-2" /></Button>
+                  <Button disabled={prof === null || isAntiTouchActive} fullWidth onClick={() => handleFinishCard(false)} className={`flex-[2.5] py-4 text-lg font-black shadow-lg transition-all ${prof === null ? 'bg-slate-200 text-slate-400' : 'bg-indigo-600 text-white shadow-indigo-200/50'}`}>确认继续 (Enter) <ArrowRight size={20} className="ml-2" /></Button>
                 </div>
               )}
             </div>
