@@ -6,7 +6,7 @@ import { Button } from './Button';
 import { 
   ArrowLeft, Settings2, RefreshCw, Eye, ArrowRight, Clock, AlertCircle, 
   Edit2, BarChart2, ListOrdered, X, CheckCircle2, Trophy, StickyNote, 
-  XCircle, ThermometerSnowflake, Waves, Hash
+  XCircle, ThermometerSnowflake, Waves, Hash, TrendingUp
 } from 'lucide-react';
 import { 
   calculateNextState, calculateBack, calculateWatchBack, 
@@ -32,7 +32,7 @@ const ALGO_TIERS =[
 
 const ALGO_SETTINGS_KEY = 'recallflow_v2_algo_settings';
 
-// 基础格式化工具
+// === 辅助渲染函数 ===
 const formatHeaderTime = (seconds: number) => { 
   if (Number.isNaN(seconds)) return '00:00';
   const m = Math.floor(seconds / 60); const s = seconds % 60; 
@@ -43,6 +43,7 @@ const formatFullTime = (seconds: number) => {
   const h = Math.floor(seconds / 3600); const m = Math.floor((seconds % 3600) / 60); const s = seconds % 60; 
   return h > 0 ? `${h}h${m}m${s}s` : (m > 0 ? `${m}m${s}s` : `${s}s`); 
 };
+const cleanNote = (text?: string) => text ? text.replace(/\n\s*\n/g, '\n').trim() : "";
 const renderFormattedText = (text?: string) => {
   if (!text) return null;
   const parts = text.split(/\[(.*?)\]/g);
@@ -52,19 +53,22 @@ const renderFormattedText = (text?: string) => {
     </span>
   );
 };
+const getPhraseTag = (score: number | undefined) => {
+  if (score === undefined || score === 0) return '新';
+  if (score > 0) return `对${Math.ceil(score)}`;
+  return `错${Math.ceil(Math.abs(score))}`;
+};
 
 export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, onExit, onTimeUpdate, onSessionComplete }) => {
   const [activeId, setActiveId] = useState<string | null>(deck.queue.length > 0 ? deck.queue[0] : null);
   const [phase, setPhase] = useState<'QUESTION' | 'ANSWER' | 'REPORT'>('QUESTION');
   const [isFinished, setIsFinished] = useState(false);
   
-  // 算法与全局配置
   const [algoSettings, setAlgoSettings] = useState(() => {
     try { const saved = localStorage.getItem(ALGO_SETTINGS_KEY); return saved ? JSON.parse(saved) : { tierIdx: 2, cap: 100, timeLimit: 10, allowFreeze: true }; } 
     catch { return { tierIdx: 2, cap: 100, timeLimit: 10, allowFreeze: true }; }
   });
 
-  // UI 面板状态
   const [showAlgoMenu, setShowAlgoMenu] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
@@ -72,19 +76,16 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
   const [editForm, setEditForm] = useState({ english: '', chinese: '', note: '' });
   const [isAntiTouchActive, setIsAntiTouchActive] = useState(false); 
 
-  // 时间与倒计时
   const [sessionDuration, setSessionDuration] = useState(0);
   const [timeLeft, setTimeLeft] = useState<number>(algoSettings.timeLimit);
   const [isTimeout, setIsTimeout] = useState(false);
 
-  // 打分与预测核心状态
   const [prof, setProf] = useState<number | null>(null);
   const [diff, setDiff] = useState<number>(2.5);
   const [customBack, setCustomBack] = useState<number | null>(null);
   const [computedBack, setComputedBack] = useState<number>(1);
   const [computedScore, setComputedScore] = useState<number>(0);
 
-  // 统计大盘
   const [stats, setStats] = useState({ count0_1: 0, count2_3: 0, count4_5: 0 });
   const [cultivationGain, setCultivationGain] = useState<number>(0);
   const [sessionResults, setSessionResults] = useState<{phrase: Phrase, prof: number | 'watch'}[]>([]);
@@ -97,12 +98,10 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     if (!currentPhrase || currentPhrase.score === undefined) return undefined;
     const s = Number(currentPhrase.score); return Number.isNaN(s) ? undefined : s;
   }, [currentPhrase]);
-  // src/components/StudySession.tsx (Part 2)
 
   const timerRef = useRef<number | null>(null);
   const questionTimerRef = useRef<number | null>(null);
 
-  // 1. 持久化设置与计时器
   useEffect(() => { localStorage.setItem(ALGO_SETTINGS_KEY, JSON.stringify(algoSettings)); }, [algoSettings]);
 
   useEffect(() => {
@@ -111,7 +110,6 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     return () => clearInterval(timerRef.current!);
   }, [onTimeUpdate, isFinished, phase]);
 
-  // 2. 题目倒计时逻辑
   useEffect(() => {
     if (phase === 'QUESTION' && algoSettings.timeLimit > 0 && !isEditing && !isFinished) {
       setTimeLeft(algoSettings.timeLimit);
@@ -122,32 +120,33 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
           return prev - 0.1;
         });
       }, 100);
-    } else {
-      if (questionTimerRef.current) clearInterval(questionTimerRef.current);
-    }
+    } else { if (questionTimerRef.current) clearInterval(questionTimerRef.current); }
     return () => { if (questionTimerRef.current) clearInterval(questionTimerRef.current); };
   }, [phase, algoSettings.timeLimit, isEditing, isFinished, activeId]);
 
-  // 3. 实时推算预期 Back 和 Score (浮点数)
+  const watchBackValue = useMemo(() => {
+    if (!currentPhrase) return 1;
+    const C = ALGO_TIERS[algoSettings.tierIdx].C;
+    const base = ALGO_TIERS[algoSettings.tierIdx].base;
+    return calculateWatchBack(getNScore(activeScore ?? 0, diff), C, base);
+  }, [currentPhrase, diff, algoSettings, activeScore]);
+
   useEffect(() => {
     if (phase === 'ANSWER' && currentPhrase && prof !== null) {
       const todayDays = Math.floor(Date.now() / 86400000);
       const C = ALGO_TIERS[algoSettings.tierIdx].C;
       const base = ALGO_TIERS[algoSettings.tierIdx].base;
       const gap = (todayDays - (currentPhrase.date || todayDays)) + 1;
-      
       const { newScore, nscore } = calculateNextState(activeScore, prof, diff, gap, C, base, algoSettings.cap);
       setComputedScore(Number.isNaN(newScore) ? 0 : newScore);
       setComputedBack(Number.isNaN(nscore) ? 1 : calculateBack(nscore, C, base));
     }
   }, [phase, prof, diff, currentPhrase, algoSettings, activeScore]);
 
-  // 4. 键盘监听实现
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isEditing || isFinished || isAntiTouchActive || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
       if (phase === 'QUESTION') {
         if (e.code === 'Space' || e.key === 'Enter') { e.preventDefault(); handleShowAnswer(); }
       } else if (phase === 'ANSWER') {
@@ -155,9 +154,8 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
           e.preventDefault(); if (prof !== null) handleFinishCard(false);
         } else {
           const keyNum = parseInt(e.key);
-          if (!isNaN(keyNum) && keyNum >= 0 && keyNum <= 5) {
-            if (isTimeout && keyNum >= 4) return; setProf(keyNum);
-          } else if (e.code === 'KeyW') handleFinishCard(true);
+          if (!isNaN(keyNum) && keyNum >= 0 && keyNum <= 5) { if (isTimeout && keyNum >= 4) return; setProf(keyNum); }
+          else if (e.code === 'KeyW') handleFinishCard(true);
         }
       }
     };
@@ -165,7 +163,6 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [phase, isEditing, isFinished, prof, isTimeout, isAntiTouchActive]);
 
-  // 5. 核心动作处理
   const handleShowAnswer = useCallback(() => {
     if (questionTimerRef.current) clearInterval(questionTimerRef.current);
     if (currentPhrase) setDiff(currentPhrase.diff ?? 2.5);
@@ -182,44 +179,28 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
   const handleFinishCard = useCallback((isWatch: boolean) => {
     if (!currentPhrase || isAntiTouchActive) return;
     setIsAntiTouchActive(true); setTimeout(() => setIsAntiTouchActive(false), 300);
-
     const todayDays = Math.floor(Date.now() / 86400000);
     const gap = (todayDays - (currentPhrase.date || todayDays)) + 1;
     const C = ALGO_TIERS[algoSettings.tierIdx].C;
     const base = ALGO_TIERS[algoSettings.tierIdx].base;
-
-    const watchBackVal = calculateWatchBack(getNScore(activeScore ?? 0, diff), C, base);
-    let finalBack = isWatch ? (customBack ?? watchBackVal) : (customBack ?? computedBack);
+    let finalBack = isWatch ? (customBack ?? watchBackValue) : (customBack ?? computedBack);
     let newScore = isWatch ? activeScore : computedScore;
 
-    // 统计与修为计算
     if (!isWatch && prof !== null) {
       const pVal = prof as number;
-      setStats(prev => ({
-        count0_1: prev.count0_1 + (pVal <= 1 ? 1 : 0),
-        count2_3: prev.count2_3 + (pVal >= 2 && pVal <= 3 ? 1 : 0),
-        count4_5: prev.count4_5 + (pVal >= 4 ? 1 : 0),
-      }));
-      const gainMap = [-1.0, -0.6, -0.2, 0.2, 0.6, 1.0];
+      setStats(prev => ({ count0_1: prev.count0_1 + (pVal <= 1 ? 1 : 0), count2_3: prev.count2_3 + (pVal >= 2 && pVal <= 3 ? 1 : 0), count4_5: prev.count4_5 + (pVal >= 4 ? 1 : 0) }));
+      const gainMap =[-1.0, -0.6, -0.2, 0.2, 0.6, 1.0];
       setCultivationGain(prev => prev + gainMap[pVal]);
-      setSessionResults(prev => [...prev, { phrase: currentPhrase, prof: pVal }]);
-    } else if (isWatch) {
-      setSessionResults(prev => [...prev, { phrase: currentPhrase, prof: 'watch' }]);
     }
+    setSessionResults(prev => [...prev, { phrase: currentPhrase, prof: isWatch ? 'watch' : prof! }]);
 
-    const updatedPhrase: Phrase = {
-      ...currentPhrase, score: newScore, diff, date: todayDays, back: finalBack,
-      totalReviews: currentPhrase.totalReviews + 1,
-      mastery: calculateMastery(getNScore(newScore ?? 0, diff)),
-      lastReviewedAt: Date.now()
-    };
-
-    // 冷却池逻辑
+    const updatedPhrase: Phrase = { ...currentPhrase, score: newScore, diff, date: todayDays, back: finalBack, totalReviews: currentPhrase.totalReviews + 1, mastery: calculateMastery(getNScore(newScore ?? 0, diff)), lastReviewedAt: Date.now() };
+    const updatedPhrases = deck.phrases.map(p => p.id === activeId ? updatedPhrase : p);
+    
     let nextCoolingPool = [...(deck.coolingPool || [])];
     nextCoolingPool.forEach(c => c.wait -= 1);
     const ready = nextCoolingPool.filter(c => c.wait <= 0);
     nextCoolingPool = nextCoolingPool.filter(c => c.wait > 0);
-
     let nextQueue = deck.queue.filter(id => id !== activeId);
     nextQueue.push(...ready.map(c => c.id));
 
@@ -229,7 +210,6 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
       nextQueue.splice(Math.min(finalBack, nextQueue.length), 0, activeId!);
     }
 
-    // 自动唤醒
     if (nextQueue.length === 0 && nextCoolingPool.length > 0) {
       const minWait = Math.min(...nextCoolingPool.map(c => c.wait));
       nextCoolingPool.forEach(c => c.wait -= minWait);
@@ -238,19 +218,15 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
       nextQueue.push(...awakened.map(c => c.id));
     }
 
-    const updatedPhrases = deck.phrases.map(p => p.id === activeId ? updatedPhrase : p);
     setMasteryTrend(prev => [...prev, { t: sessionDuration, v: updatedPhrases.reduce((acc, p) => acc + (p.mastery || 0), 0) / updatedPhrases.length }]);
     onUpdateDeck({ ...deck, queue: nextQueue, coolingPool: nextCoolingPool, phrases: updatedPhrases });
-
-    setPhase('QUESTION'); setIsTimeout(false); setTimeLeft(algoSettings.timeLimit);
-    setProf(null); setCustomBack(null);
+    setPhase('QUESTION'); setIsTimeout(false); setTimeLeft(algoSettings.timeLimit); setProf(null); setCustomBack(null);
     setActiveId(nextQueue.length > 0 ? nextQueue[0] : null);
-  }, [currentPhrase, isAntiTouchActive, algoSettings, diff, customBack, prof, deck, activeId, sessionDuration, onUpdateDeck, activeScore, computedBack, computedScore]);
+  }, [currentPhrase, isAntiTouchActive, algoSettings, diff, customBack, prof, deck, activeId, sessionDuration, onUpdateDeck, activeScore, watchBackValue, computedBack, computedScore]);
 
   const handleRequestExit = () => { setIsFinished(true); setPhase('REPORT'); };
   const handleFinalExit = () => { if (onSessionComplete) onSessionComplete(sessionDuration, stats, cultivationGain); onExit(); };
 
-  // 6. SVG 图表渲染
   const renderTrendChart = (data = masteryTrend, height = 100) => {
     if (data.length < 2) return null;
     const width = 240; const padding = { top: 10, right: 10, bottom: 20, left: 30 };
@@ -275,322 +251,11 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
       </div>
     );
   };
-  // src/components/StudySession.tsx (Part 3)
+  // src/components/StudySession.tsx (Part 2)
 
-  // ========== UI 渲染逻辑 ==========
+  // ========== UI 辅助渲染函数 ==========
 
-  // 1. 专属复盘报告页面 (详见 Part 4)
-  if (phase === 'REPORT') return renderReport(); // 稍后在 Part 4 定义
-
-  // 2. 冷却池自动唤醒引导页 (针对截图 1 报错的修复)
-  if (!currentPhrase) {
-    if (deck.coolingPool && deck.coolingPool.length > 0) {
-      return (
-        <div className="fixed inset-0 flex flex-col items-center justify-center bg-slate-50 z-[100] p-4 animate-in fade-in">
-          <div className="bg-white p-6 rounded-3xl shadow-xl text-center max-w-sm w-full border border-slate-100">
-            <div className="w-14 h-14 bg-sky-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Waves className="w-7 h-7 text-sky-500" />
-            </div>
-            <h2 className="text-xl font-black text-slate-800 mb-1">发现冻结词条</h2>
-            <p className="text-xs text-slate-500 mb-6 px-4">主队列已清空，但后台仍有 <span className="text-sky-500 font-black">{deck.coolingPool.length}</span> 个词条正在冻结中。</p>
-            <Button fullWidth onClick={() => {
-                const awakenedIds = deck.coolingPool!.map(c => c.id);
-                onUpdateDeck({ ...deck, queue: awakenedIds, coolingPool: [] });
-                setActiveId(awakenedIds[0]); 
-            }} className="py-3.5 text-base font-black bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-200 border-0 text-white">立即全部唤醒</Button>
-            <Button fullWidth variant="ghost" onClick={handleRequestExit} className="mt-2 text-xs text-slate-400">退出查看报告</Button>
-          </div>
-        </div>
-      );
-    }
-    return <div className="fixed inset-0 flex flex-col items-center justify-center bg-white z-[100] p-4"><AlertCircle className="w-12 h-12 text-rose-500 mb-2" /><h2 className="text-lg font-black text-slate-800">数据加载异常</h2><Button onClick={onExit} className="mt-4 px-6 py-2">返回主页</Button></div>;
-  }
-
-  // 3. 实时状态计算
-  const currentBackDisplay = customBack ?? (prof !== null ? computedBack : watchBackValue);
-  const isNowFrozen = algoSettings.allowFreeze && currentBackDisplay > (deck.queue.length - 1);
-
-  return (
-    <div className="fixed inset-0 bg-slate-50 z-[100] flex flex-col h-full overflow-hidden">
-      {/* 顶栏控制 - 极致紧凑 */}
-      <div className="bg-white shadow-sm shrink-0 relative z-[60]">
-        <div className="flex items-center justify-between px-3 py-1.5 h-12">
-          <button onClick={handleRequestExit} className="p-1.5 text-slate-400 hover:text-slate-600 transition-all"><ArrowLeft size={20}/></button>
-          <div className="flex-1 flex flex-col justify-center items-center max-w-[60%]">
-              <span className="text-[10px] text-slate-400 font-bold truncate w-full text-center">{deck.name}</span>
-              <div className="h-1 w-32 bg-slate-100 rounded-full overflow-hidden mt-1 relative">
-                <div className="absolute top-0 left-0 h-full transition-all duration-700 ease-out" style={{ width: `${liveMasteryValue}%`, backgroundColor: getDynamicColor(liveMasteryValue) }}></div>
-              </div>
-          </div>
-          <div className="flex gap-0.5 shrink-0 items-center">
-            <button onClick={() => setShowAlgoMenu(!showAlgoMenu)} className={`p-1.5 rounded-lg ${showAlgoMenu ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300'}`}><Settings2 size={18}/></button>
-            <button onClick={()=>setShowStats(!showStats)} className={`p-1.5 rounded-lg ${showStats ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300'}`}><BarChart2 size={18}/></button>
-            <button onClick={()=>setShowQueue(!showQueue)} className={`p-1.5 rounded-lg ${showQueue ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300'}`}><ListOrdered size={18}/></button>
-          </div>
-        </div>
-        {/* 算法菜单弹出层 */}
-        {showAlgoMenu && renderAlgoMenu()} 
-      </div>
-
-      <div className="flex-1 flex relative overflow-hidden">
-        <div className={`flex-1 flex flex-col items-center p-2 sm:p-4 transition-all duration-300 ${showQueue ? 'lg:pr-[300px]' : ''} ${showStats ? 'lg:pl-[300px]' : ''}`}>
-          
-          <div className="w-full max-w-xl bg-white rounded-2xl shadow-lg border border-slate-100 flex flex-col h-full overflow-hidden relative">
-            
-            {/* 行内编辑入口 */}
-            {phase !== 'QUESTION' && (
-              <button onClick={() => setIsEditing(true)} className="absolute top-2 right-2 z-10 p-2 text-slate-200 hover:text-indigo-400 transition-all"><Edit2 size={16}/></button>
-            )}
-
-            {isEditing ? renderEditForm() : (
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 flex flex-col items-center w-full relative">
-                
-                {/* 题目区 - Score 智能显示 */}
-                <div className="w-full flex flex-col items-center text-center pt-2 mb-4">
-                  {phase === 'ANSWER' && (
-                    <div className="flex items-center gap-1.5 mb-2 bg-slate-50 border px-2 py-0.5 rounded-full animate-in fade-in zoom-in-95">
-                      <span className="text-[9px] font-black text-slate-300 uppercase">Score:</span>
-                      <span className="text-[10px] font-black text-slate-600">{activeScore?.toFixed(2) ?? 'NEW'}</span>
-                    </div>
-                  )}
-                  <h1 className="text-2xl sm:text-3xl font-black text-slate-800 leading-tight break-words max-w-full">
-                    {renderFormattedText(questionText)}
-                  </h1>
-                  
-                  {phase === 'QUESTION' && algoSettings.timeLimit > 0 && (
-                    <div className="mt-4 flex flex-col items-center">
-                      <div className={`text-[10px] font-black tabular-nums mb-1 ${isTimeout ? 'text-rose-500' : 'text-slate-400'}`}>
-                        {isTimeout ? '已超时限制' : `${timeLeft.toFixed(1)}s`}
-                      </div>
-                      <div className="w-24 h-1 bg-slate-100 rounded-full overflow-hidden">
-                        <div className={`h-full transition-all duration-100 ease-linear ${isTimeout ? 'bg-rose-500' : 'bg-indigo-400'}`} style={{ width: `${isTimeout ? 100 : (timeLeft / algoSettings.timeLimit) * 100}%` }} />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 答案与打分控制 - 紧凑排布 */}
-                {phase === 'ANSWER' && (
-                  <div className="w-full flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-300 pb-2">
-                    <div className="text-center py-2 px-3 rounded-xl w-full mb-3 bg-indigo-50/30">
-                      <p className="text-2xl font-black text-indigo-600 leading-tight break-words">{renderFormattedText(answerText)}</p>
-                    </div>
-
-                    {currentPhrase.note && (
-                      <div className="w-full bg-amber-50/50 p-3 rounded-xl border border-amber-100 text-left relative mb-4">
-                        <div className="absolute top-3 left-3 text-amber-400"><StickyNote size={14} /></div>
-                        <div className="pl-6 text-xs font-bold text-slate-600 whitespace-pre-wrap leading-normal">
-                          {renderFormattedText(cleanNote(currentPhrase.note))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="w-full space-y-3">
-                      {/* 难度选择器 */}
-                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex justify-between items-center gap-3">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">难度 {diff}</span>
-                        <div className="flex gap-1 flex-1">
-                          {[0, 1, 2, 3, 4, 5].map(v => (
-                            <button key={v} onClick={() => setDiff(v)} className={`flex-1 py-1.5 rounded-lg font-black text-[11px] transition-all border-2 ${diff === v ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-400'}`}>{v}</button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* 熟练度 - 强制单行 */}
-                      <div className="grid grid-cols-6 gap-1">
-                        {[0, 1, 2, 3, 4, 5].map(v => {
-                          const disabled = isTimeout && v >= 4;
-                          return (
-                            <button key={v} disabled={disabled} onClick={() => setProf(v)} 
-                              className={`flex flex-col items-center justify-center py-1.5 rounded-lg border-2 transition-all ${disabled ? 'opacity-20 grayscale bg-slate-50' : prof === v ? 'bg-emerald-50 border-emerald-500 scale-105 z-10' : 'bg-white border-slate-100'}`}>
-                              <span className={`text-sm font-black ${prof === v ? 'text-emerald-600' : 'text-slate-400'}`}>{v}</span>
-                              <span className="text-[7px] font-bold mt-0.5 scale-90 whitespace-nowrap text-slate-500">{currentLabels[v].slice(0,2)}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* 后推面板 - 精确浮点预测 */}
-                      <div className="bg-indigo-50/40 p-3 rounded-xl border border-indigo-100 animate-in slide-in-from-bottom-2">
-                        <div className="flex justify-between items-start mb-3">
-                            <div className="flex flex-col">
-                              <span className="text-[9px] font-black text-indigo-900 uppercase tracking-widest">Score 预测变化</span>
-                              <div className="text-[10px] font-bold mt-1 flex items-center gap-1">
-                                <span className="text-slate-400">{activeScore?.toFixed(2) ?? '0.00'}</span>
-                                <ArrowRight size={10} className="text-slate-300"/>
-                                <span className={`font-black ${prof !== null ? (computedScore >= (activeScore ?? 0) ? 'text-emerald-600' : 'text-rose-500') : 'text-indigo-400'}`}>
-                                  {(prof !== null ? computedScore : (activeScore ?? 0)).toFixed(2)}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex flex-col items-end">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] font-black text-indigo-600 w-8 text-center">{currentBackDisplay}</span>
-                                  <input type="range" min="0" max="1000" 
-                                    value={mapBackToSlider(currentBackDisplay)} 
-                                    onChange={e => setCustomBack(mapSliderToBack(parseInt(e.target.value)))}
-                                    className={`w-20 h-1 rounded-lg appearance-none cursor-pointer ${isNowFrozen ? 'bg-sky-200 accent-sky-500' : 'bg-indigo-200 accent-indigo-600'}`} 
-                                  />
-                                </div>
-                                {isNowFrozen && <div className="text-sky-600 font-black text-[8px] mt-1 flex items-center gap-1 italic"><Waves size={10}/> Freezing Pool (+{currentBackDisplay - (deck.queue.length-1)})</div>}
-                            </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {isAntiTouchActive && <div className="absolute inset-0 z-20 cursor-not-allowed"></div>}
-              </div>
-            )}
-            
-            {/* 底部按钮 */}
-            <div className="p-3 sm:p-4 bg-white border-t border-slate-100 shrink-0">
-              {phase === 'QUESTION' ? (
-                <Button fullWidth onClick={handleShowAnswer} className="py-3.5 text-base font-black shadow-lg bg-indigo-600 border-0 text-white">查看答案 (Space)</Button>
-              ) : (
-                <div className="flex gap-2">
-                  <button onClick={() => handleFinishCard(true)} className="flex-1 flex items-center justify-center gap-1 py-3.5 bg-slate-100 text-slate-600 rounded-xl font-black text-xs border-0 shadow-sm"><Eye size={16}/> 观望 (W)</button>
-                  <Button disabled={prof === null || isAntiTouchActive} fullWidth onClick={() => handleFinishCard(false)} className={`flex-[2.5] py-3.5 text-base font-black shadow-lg border-0 ${prof === null ? 'bg-slate-200 text-slate-400' : 'bg-indigo-600 text-white shadow-indigo-200'}`}>
-                    确认继续 (Enter) <ArrowRight size={18} className="ml-1.5" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        // src/components/StudySession.tsx (Part 4 - 完结)
-
-        {/* ===================== 右侧队列抽屉 (含排序冷却池) ===================== */}
-        <div className={`absolute top-0 right-0 h-full w-[300px] bg-white border-l border-slate-100 shadow-2xl transition-transform duration-300 z-[70] flex flex-col ${showQueue ? 'translate-x-0' : 'translate-x-full'}`}>
-          <div className="p-4 flex justify-between items-center bg-slate-50 border-b border-slate-100 shrink-0">
-            <h3 className="font-black text-slate-800 text-sm flex items-center gap-2"><ListOrdered size={16} className="text-indigo-500"/> 复习队列</h3>
-            <button onClick={()=>setShowQueue(false)} className="p-1 hover:bg-slate-200 rounded-full"><X size={18} className="text-slate-500"/></button>
-          </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
-            {deck.queue.map((id, idx) => {
-              const p = deck.phrases.find(item => item.id === id);
-              if (!p) return null;
-              const isCurrent = id === activeId;
-              return (
-                <div key={id} className={`flex items-center justify-between text-xs py-2 px-3 rounded-xl border transition-all ${isCurrent ? 'bg-indigo-50 border-indigo-200 shadow-sm scale-[1.02] z-10' : 'bg-white border-transparent hover:bg-slate-50'}`}>
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <span className={`font-black text-[9px] w-4 text-center shrink-0 ${isCurrent ? 'text-indigo-600' : 'text-slate-300'}`}>{idx+1}</span>
-                    <div className={`truncate font-bold ${isCurrent ? 'text-indigo-900' : 'text-slate-600'}`}>{p.chinese}</div>
-                  </div>
-                  <div className="px-1.5 py-0.5 rounded-md text-[8px] font-black text-white shrink-0 ml-2" style={{backgroundColor: getScoreBadgeColor(p.score)}}>{getPhraseLabel(p.score)}</div>
-                </div>
-              )
-            })}
-            {deck.coolingPool && deck.coolingPool.length > 0 && (
-              <>
-                <div className="relative py-4">
-                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-sky-100"></div></div>
-                  <div className="relative flex justify-center"><span className="bg-white px-3 text-[9px] font-black text-sky-400 uppercase tracking-widest flex items-center gap-1.5"><ThermometerSnowflake size={12}/> Cooling Pool</span></div>
-                </div>
-                {[...deck.coolingPool].sort((a,b)=>a.wait - b.wait).map((c) => {
-                  const p = deck.phrases.find(item => item.id === c.id);
-                  if (!p) return null;
-                  return (
-                    <div key={c.id} className="flex items-center justify-between py-2 px-3 opacity-60">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <span className="font-black text-[9px] w-6 text-center shrink-0 text-sky-500 bg-sky-50 rounded-md border border-sky-100">{c.wait}</span>
-                        <div className="truncate font-bold text-[11px] text-slate-500">{p.chinese}</div>
-                      </div>
-                      <div className="px-1.5 py-0.5 rounded-md text-[8px] font-black text-white shrink-0 ml-2 opacity-50" style={{backgroundColor: getScoreBadgeColor(p.score)}}>{getPhraseLabel(p.score)}</div>
-                    </div>
-                  );
-                })}
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* ===================== 左侧统计抽屉 (含状态分布列表) ===================== */}
-        <div className={`absolute top-0 left-0 h-full w-[300px] bg-white border-r border-slate-100 shadow-2xl transition-transform duration-300 z-[70] flex flex-col ${showStats ? 'translate-x-0' : '-translate-x-full'}`}>
-          <div className="p-4 flex justify-between items-center bg-slate-50 border-b border-slate-100 shrink-0">
-            <h3 className="font-black text-slate-800 text-sm flex items-center gap-2"><BarChart2 size={16} className="text-indigo-500"/> 状态大盘</h3>
-            <button onClick={()=>setShowStats(false)} className="p-1 hover:bg-slate-200 rounded-full"><X size={18} className="text-slate-500"/></button>
-          </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-6">
-            <div><h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5"><TrendingUp size={12}/> Mastery Trend</h4>{renderTrendChart(masteryTrend, 140)}</div>
-            
-            {/* 核心需求：状态数量分布列表 */}
-            <div className="border-t border-slate-50 pt-5">
-               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5"><Hash size={12}/> 全本状态分布</h4>
-               <div className="grid grid-cols-2 gap-2">
-                 {Object.entries(deck.phrases.reduce((acc, p) => {
-                    const tag = getPhraseTag(p.score);
-                    acc[tag] = (acc[tag] || 0) + 1;
-                    return acc;
-                 }, {} as Record<string, number>))
-                 .sort((a,b) => {
-                    if (a[0] === '新') return -1; if (b[0] === '新') return 1;
-                    return a[0].localeCompare(b[0]);
-                 })
-                 .map(([tag, count]) => (
-                   <div key={tag} className="flex justify-between items-center p-2 rounded-xl bg-slate-50 border border-slate-100">
-                      <span className="text-[10px] font-black text-white px-1.5 py-0.5 rounded-md shadow-sm" style={{backgroundColor: getScoreBadgeColor(tag === '新' ? undefined : tag.startsWith('对') ? 1 : -1)}}>{tag}</span>
-                      <span className="font-mono font-black text-slate-700 text-xs">{count}</span>
-                   </div>
-                 ))}
-               </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  // 子组件渲染函数：编辑表单
-  function renderEditForm() {
-    return (
-      <div className="flex-1 p-5 overflow-y-auto custom-scrollbar animate-in fade-in">
-        <h3 className="font-black text-slate-800 mb-5 flex items-center gap-2 text-base"><Edit2 size={18}/> 编辑卡片</h3>
-        <div className="space-y-3">
-          <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-1">Chinese</label><textarea className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 ring-indigo-500 text-sm" rows={2} value={editForm.chinese} onChange={e=>setEditForm({...editForm, chinese: e.target.value})}/></div>
-          <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-1">English</label><textarea className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 ring-indigo-500 text-sm" rows={2} value={editForm.english} onChange={e=>setEditForm({...editForm, english: e.target.value})}/></div>
-          <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-1">Note</label><textarea className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-600 outline-none focus:ring-2 ring-indigo-500" rows={3} value={editForm.note} onChange={e=>setEditForm({...editForm, note: e.target.value})}/></div>
-          <div className="flex gap-2 pt-2"><Button variant="ghost" fullWidth onClick={() => setIsEditing(false)}>取消</Button><Button fullWidth onClick={handleSaveEdit}>保存</Button></div>
-        </div>
-      </div>
-    );
-  }
-
-  // 子组件渲染函数：算法菜单
-  function renderAlgoMenu() {
-    return (
-      <div className="absolute top-full right-2 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-[100] animate-in slide-in-from-top-2">
-        <div className="p-3 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
-          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Algorithm Settings</span>
-          <button onClick={()=>setShowAlgoMenu(false)}><X size={14} className="text-slate-400"/></button>
-        </div>
-        <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
-          <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase block mb-2">学习节奏</label>
-            <div className="grid grid-cols-1 gap-1">
-              {ALGO_TIERS.map((tier, idx) => (
-                <button key={idx} onClick={() => setAlgoSettings({ ...algoSettings, tierIdx: idx })} className={`w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-all ${algoSettings.tierIdx === idx ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'text-slate-500 hover:bg-slate-50'}`}>
-                  {tier.name} <span className="opacity-40 text-[9px] ml-1">C:{tier.C} b:{tier.base}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-            <label className="flex items-center justify-between cursor-pointer">
-              <div className="text-xs font-bold text-slate-700">允许词条冻结</div>
-              <div className={`w-10 h-5 rounded-full relative shadow-inner ${algoSettings.allowFreeze ? 'bg-emerald-500' : 'bg-slate-300'}`} onClick={() => setAlgoSettings({...algoSettings, allowFreeze: !algoSettings.allowFreeze})}>
-                <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${algoSettings.allowFreeze ? 'left-6' : 'left-1'}`}></div>
-              </div>
-            </label>
-          </div>
-          <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">Cap (每日容量)</label><input type="number" min="10" value={algoSettings.cap} onChange={(e) => setAlgoSettings({ ...algoSettings, cap: Math.max(10, parseInt(e.target.value) || 100) })} className="w-full p-2 border-2 border-slate-100 rounded-lg text-xs font-black outline-none focus:border-indigo-400" /></div>
-          <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">限时 (秒)</label><input type="number" min="0" value={algoSettings.timeLimit} onChange={(e) => setAlgoSettings({ ...algoSettings, timeLimit: Math.max(0, parseInt(e.target.value) || 0) })} className="w-full p-2 border-2 border-slate-100 rounded-lg text-xs font-black outline-none focus:border-indigo-400" /></div>
-        </div>
-      </div>
-    );
-  }
-
-  // 子组件渲染函数：复盘报告
+  // 1. 学习复盘报告页面
   function renderReport() {
     const endMastery = masteryTrend.length > 0 ? masteryTrend[masteryTrend.length - 1].v : startMastery;
     const gain = endMastery - startMastery;
@@ -640,4 +305,290 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
       </div>
     );
   }
+
+  // 2. 行内编辑表单
+  function renderEditForm() {
+    return (
+      <div className="flex-1 p-5 overflow-y-auto custom-scrollbar animate-in fade-in">
+        <h3 className="font-black text-slate-800 mb-5 flex items-center gap-2 text-base"><Edit2 size={18}/> 编辑卡片</h3>
+        <div className="space-y-3">
+          <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-1">Chinese</label><textarea className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 ring-indigo-500 text-sm" rows={2} value={editForm.chinese} onChange={e=>setEditForm({...editForm, chinese: e.target.value})}/></div>
+          <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-1">English</label><textarea className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 ring-indigo-500 text-sm" rows={2} value={editForm.english} onChange={e=>setEditForm({...editForm, english: e.target.value})}/></div>
+          <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-1">Note</label><textarea className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-600 outline-none focus:ring-2 ring-indigo-500" rows={3} value={editForm.note} onChange={e=>setEditForm({...editForm, note: e.target.value})}/></div>
+          <div className="flex gap-2 pt-2"><Button variant="ghost" fullWidth onClick={() => setIsEditing(false)}>取消</Button><Button fullWidth onClick={handleSaveEdit}>保存</Button></div>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. 算法设置菜单
+  function renderAlgoMenu() {
+    return (
+      <div className="absolute top-full right-2 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-[100] animate-in slide-in-from-top-2">
+        <div className="p-3 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Algorithm Settings</span>
+          <button onClick={()=>setShowAlgoMenu(false)}><X size={14} className="text-slate-400"/></button>
+        </div>
+        <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase block mb-2">学习节奏档位</label>
+            <div className="grid grid-cols-1 gap-1">
+              {ALGO_TIERS.map((tier, idx) => (
+                <button key={idx} onClick={() => setAlgoSettings({ ...algoSettings, tierIdx: idx })} className={`w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-all ${algoSettings.tierIdx === idx ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'text-slate-500 hover:bg-slate-50 border border-transparent'}`}>
+                  {tier.name} <span className="opacity-40 text-[9px] ml-1">C:{tier.C} b:{tier.base}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <label className="flex items-center justify-between cursor-pointer">
+              <div className="text-xs font-bold text-slate-700">允许词条冻结</div>
+              <div className={`w-10 h-5 rounded-full transition-colors relative shadow-inner ${algoSettings.allowFreeze ? 'bg-emerald-500' : 'bg-slate-300'}`} onClick={() => setAlgoSettings({...algoSettings, allowFreeze: !algoSettings.allowFreeze})}>
+                <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm ${algoSettings.allowFreeze ? 'left-6' : 'left-1'}`}></div>
+              </div>
+            </label>
+          </div>
+          <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">Cap (每日容量)</label><input type="number" min="10" value={algoSettings.cap} onChange={(e) => setAlgoSettings({ ...algoSettings, cap: Math.max(10, parseInt(e.target.value) || 100) })} className="w-full p-2 border-2 border-slate-100 rounded-lg text-xs font-black outline-none focus:border-indigo-400" /></div>
+          <div><label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">单题限时 (秒)</label><input type="number" min="0" value={algoSettings.timeLimit} onChange={(e) => setAlgoSettings({ ...algoSettings, timeLimit: Math.max(0, parseInt(e.target.value) || 0) })} className="w-full p-2 border-2 border-slate-100 rounded-lg text-xs font-black outline-none focus:border-indigo-400" /></div>
+        </div>
+      </div>
+    );
+  }
+
+  // ========== 主主体渲染 ==========
+
+  const liveMasteryValue = masteryTrend.length > 0 ? masteryTrend[masteryTrend.length - 1].v : startMastery;
+
+  return (
+    <div className="fixed inset-0 bg-slate-50 z-[100] flex flex-col h-full overflow-hidden">
+      {/* 1. 极致紧凑顶栏 */}
+      <div className="bg-white shadow-sm shrink-0 relative z-[60]">
+        <div className="flex items-center justify-between px-3 py-1.5 h-12">
+          <button onClick={handleRequestExit} className="p-1.5 text-slate-400 hover:text-slate-600 transition-all active:scale-90"><ArrowLeft size={20}/></button>
+          <div className="flex-1 flex flex-col justify-center items-center max-w-[60%]">
+              <span className="text-[10px] text-slate-400 font-black truncate w-full text-center uppercase tracking-tighter">{deck.name}</span>
+              <div className="h-1 w-32 bg-slate-100 rounded-full overflow-hidden mt-1 relative">
+                <div className="absolute top-0 left-0 h-full transition-all duration-700 ease-out" style={{ width: `${liveMasteryValue}%`, backgroundColor: getDynamicColor(liveMasteryValue) }}></div>
+              </div>
+          </div>
+          <div className="flex gap-0.5 shrink-0 items-center">
+            <button onClick={() => setShowAlgoMenu(!showAlgoMenu)} className={`p-1.5 rounded-lg transition-colors ${showAlgoMenu ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300'}`}><Settings2 size={18}/></button>
+            <button onClick={()=>setShowStats(!showStats)} className={`p-1.5 rounded-lg transition-colors ${showStats ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300'}`}><BarChart2 size={18}/></button>
+            <button onClick={()=>setShowQueue(!showQueue)} className={`p-1.5 rounded-lg transition-colors ${showQueue ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300'}`}><ListOrdered size={18}/></button>
+          </div>
+        </div>
+        {showAlgoMenu && renderAlgoMenu()} 
+      </div>
+
+      {/* 2. 主体工作区 */}
+      <div className="flex-1 flex relative overflow-hidden">
+        <div className={`flex-1 flex flex-col items-center p-2 sm:p-4 transition-all duration-300 ${showQueue ? 'lg:pr-[300px]' : ''} ${showStats ? 'lg:pl-[300px]' : ''}`}>
+          
+          <div className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-100 flex flex-col h-full max-h-[calc(100vh-90px)] sm:max-h-[600px] overflow-hidden relative">
+            
+            {phase !== 'QUESTION' && !isEditing && (
+              <button onClick={() => setIsEditing(true)} className="absolute top-2.5 right-2.5 z-10 p-2 text-slate-200 hover:text-indigo-500 transition-all active:scale-90"><Edit2 size={16}/></button>
+            )}
+
+            {isEditing ? renderEditForm() : (
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8 flex flex-col items-center w-full relative">
+                
+                {/* 题目展示区 - 隐藏 Score */}
+                <div className="w-full flex flex-col items-center text-center pt-2 mb-4">
+                  {phase === 'ANSWER' && (
+                    <div className="flex items-center gap-2 mb-3 bg-slate-50 border border-slate-100 px-3 py-0.5 rounded-full animate-in fade-in zoom-in-95">
+                      <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Score:</span>
+                      <span className="text-[11px] font-black text-slate-600">{activeScore?.toFixed(2) ?? 'NEW'}</span>
+                    </div>
+                  )}
+                  <h1 className="text-2xl sm:text-4xl font-black text-slate-800 leading-snug break-words max-w-full">
+                    {renderFormattedText(questionText)}
+                  </h1>
+                  
+                  {phase === 'QUESTION' && algoSettings.timeLimit > 0 && (
+                    <div className="mt-5 flex flex-col items-center animate-in fade-in">
+                      <div className={`text-[10px] font-black tabular-nums mb-1.5 ${isTimeout ? 'text-rose-500' : 'text-slate-400'}`}>
+                        {isTimeout ? '已超过限时' : `${timeLeft.toFixed(1)}s`}
+                      </div>
+                      <div className="w-24 h-1 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                        <div className={`h-full transition-all duration-100 ease-linear ${isTimeout ? 'bg-rose-500' : 'bg-indigo-400'}`} style={{ width: `${isTimeout ? 100 : (timeLeft / algoSettings.timeLimit) * 100}%` }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                // src/components/StudySession.tsx (Part 3 - 完结)
+
+                {/* 4. 答案与打分控制区 - 极致紧凑排版 */}
+                {phase === 'ANSWER' && (
+                  <div className="w-full flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-300 pb-2">
+                    <div className="text-center py-2 px-4 rounded-xl w-full mb-3 bg-indigo-50/40 border border-indigo-100/50">
+                      <p className="text-2xl font-black text-indigo-600 leading-snug break-words">{renderFormattedText(answerText)}</p>
+                    </div>
+
+                    {currentPhrase.note && (
+                      <div className="w-full bg-amber-50/60 p-3 rounded-xl border border-amber-100 text-left relative mb-4">
+                        <div className="absolute top-3 left-3 text-amber-400"><StickyNote size={14} /></div>
+                        <div className="pl-7 text-xs font-bold text-slate-600 whitespace-pre-wrap leading-normal">
+                          {renderFormattedText(cleanNote(currentPhrase.note))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="w-full space-y-3">
+                      {/* 难度选择器 */}
+                      <div className="bg-slate-50/80 p-2 rounded-xl border border-slate-100 flex justify-between items-center gap-2">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0 ml-1">难度 {diff}</span>
+                        <div className="flex gap-1 flex-1">
+                          {[0, 1, 2, 3, 4, 5].map(v => (
+                            <button key={v} onClick={() => setDiff(v)} className={`flex-1 py-1.5 rounded-lg font-black text-[11px] transition-all border-2 ${diff === v ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-400'}`}>{v}</button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 熟练度评分 - 强制单行平铺 */}
+                      <div className="grid grid-cols-6 gap-1">
+                        {[0, 1, 2, 3, 4, 5].map(v => {
+                          const disabled = isTimeout && v >= 4;
+                          return (
+                            <button key={v} disabled={disabled} onClick={() => setProf(v)} 
+                              className={`flex flex-col items-center justify-center py-1.5 rounded-lg border-2 transition-all ${disabled ? 'opacity-20 grayscale bg-slate-50' : prof === v ? 'bg-emerald-50 border-emerald-500 scale-105 z-10' : 'bg-white border-slate-100'}`}>
+                              <span className={`text-sm font-black ${prof === v ? 'text-emerald-600' : 'text-slate-400'}`}>{v}</span>
+                              <span className="text-[7px] font-bold mt-0.5 scale-90 whitespace-nowrap text-slate-500">{currentLabels[v].slice(0,2)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* 后推面板 - 精确浮点 Score 预测 */}
+                      <div className="bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 animate-in slide-in-from-bottom-2">
+                        <div className="flex justify-between items-start mb-2.5">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black text-indigo-900 uppercase tracking-widest flex items-center gap-1"><Settings2 size={10}/> Score 预测轨迹</span>
+                              <div className="text-[10px] font-bold mt-1 flex items-center gap-1">
+                                <span className="text-slate-400">{activeScore?.toFixed(2) ?? '0.00'}</span>
+                                <ArrowRight size={10} className="text-slate-300"/>
+                                <span className={`font-black ${prof !== null ? (computedScore >= (activeScore ?? 0) ? 'text-emerald-600' : 'text-rose-500') : 'text-indigo-400'}`}>
+                                  {(prof !== null ? computedScore : (activeScore ?? 0)).toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono font-black text-xs text-indigo-600 w-8 text-right">{currentBackDisplay}</span>
+                                  <input type="range" min="0" max="1000" 
+                                    value={mapBackToSlider(currentBackDisplay)} 
+                                    onChange={e => setCustomBack(mapSliderToBack(parseInt(e.target.value)))}
+                                    className={`w-20 h-1 rounded-lg appearance-none cursor-pointer ${isNowFrozen ? 'bg-sky-200 accent-sky-500' : 'bg-indigo-200 accent-indigo-600'}`} 
+                                  />
+                                </div>
+                                {isNowFrozen && <div className="text-sky-600 font-black text-[8px] mt-1 flex items-center gap-1 italic"><Waves size={10}/> Freezing Pool (+{currentBackDisplay - (deck.queue.length-1)})</div>}
+                            </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {isAntiTouchActive && <div className="absolute inset-0 z-20 cursor-not-allowed"></div>}
+              </div>
+            )}
+            
+            {/* 5. 底部持久化按钮区 */}
+            <div className="p-3 sm:p-4 bg-white border-t border-slate-100 shrink-0">
+              {phase === 'QUESTION' ? (
+                <Button fullWidth onClick={handleShowAnswer} className="py-3.5 text-base font-black shadow-lg bg-indigo-600 border-0 text-white hover:bg-indigo-700 transition-all active:scale-95">查看答案 (Space)</Button>
+              ) : (
+                <div className="flex gap-2">
+                  <button onClick={() => handleFinishCard(true)} className="flex-1 flex items-center justify-center gap-1 py-3.5 bg-slate-100 text-slate-600 rounded-xl font-black text-xs border-0 shadow-sm active:scale-95 transition-all"><Eye size={16}/> 观望 (W)</button>
+                  <Button disabled={prof === null || isAntiTouchActive} fullWidth onClick={() => handleFinishCard(false)} className={`flex-[2.5] py-3.5 text-base font-black shadow-lg border-0 transition-all active:scale-95 ${prof === null ? 'bg-slate-200 text-slate-400' : 'bg-indigo-600 text-white shadow-indigo-200'}`}>
+                    确认继续 (Enter) <ArrowRight size={18} className="ml-1.5" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ===================== 右侧队列抽屉 (含精准排序冷却池) ===================== */}
+        <div className={`absolute top-0 right-0 h-full w-[300px] bg-white border-l border-slate-100 shadow-2xl transition-transform duration-300 z-[70] flex flex-col ${showQueue ? 'translate-x-0' : 'translate-x-full'}`}>
+          <div className="p-4 flex justify-between items-center bg-slate-50 border-b border-slate-100 shrink-0">
+            <h3 className="font-black text-slate-800 text-sm flex items-center gap-2"><ListOrdered size={16} className="text-indigo-500"/> 复习队列</h3>
+            <button onClick={()=>setShowQueue(false)} className="p-1 hover:bg-slate-200 rounded-full transition-colors"><X size={18} className="text-slate-500"/></button>
+          </div>
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
+            {deck.queue.map((id, idx) => {
+              const p = deck.phrases.find(item => item.id === id);
+              if (!p) return null;
+              const isCurrent = id === activeId;
+              return (
+                <div key={id} className={`flex items-center justify-between text-xs py-2 px-3 rounded-xl border transition-all ${isCurrent ? 'bg-indigo-50 border-indigo-200 shadow-sm scale-[1.02] z-10' : 'bg-white border-transparent hover:bg-slate-50'}`}>
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className={`font-black text-[9px] w-4 text-center shrink-0 ${isCurrent ? 'text-indigo-600' : 'text-slate-300'}`}>{idx+1}</span>
+                    <div className={`truncate font-bold ${isCurrent ? 'text-indigo-900' : 'text-slate-600'}`}>{p.chinese}</div>
+                  </div>
+                  <div className="px-1.5 py-0.5 rounded-md text-[8px] font-black text-white shrink-0 ml-2" style={{backgroundColor: getScoreBadgeColor(p.score)}}>{getPhraseLabel(p.score)}</div>
+                </div>
+              )
+            })}
+            {deck.coolingPool && deck.coolingPool.length > 0 && (
+              <>
+                <div className="relative py-4">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-sky-100"></div></div>
+                  <div className="relative flex justify-center"><span className="bg-white px-3 text-[9px] font-black text-sky-400 uppercase tracking-widest flex items-center gap-1.5"><ThermometerSnowflake size={12}/> Cooling Pool</span></div>
+                </div>
+                {[...deck.coolingPool].sort((a,b)=>a.wait - b.wait).map((c) => {
+                  const p = deck.phrases.find(item => item.id === c.id);
+                  if (!p) return null;
+                  return (
+                    <div key={c.id} className="flex items-center justify-between py-2 px-3 opacity-60">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="font-black text-[9px] w-6 text-center shrink-0 text-sky-500 bg-sky-50 rounded-md border border-sky-100">{c.wait}</span>
+                        <div className="truncate font-bold text-[11px] text-slate-500">{p.chinese}</div>
+                      </div>
+                      <div className="px-1.5 py-0.5 rounded-md text-[8px] font-black text-white shrink-0 ml-2 opacity-50" style={{backgroundColor: getScoreBadgeColor(p.score)}}>{getPhraseLabel(p.score)}</div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* ===================== 左侧统计抽屉 (补全：全本状态数量分布列表) ===================== */}
+        <div className={`absolute top-0 left-0 h-full w-[300px] bg-white border-r border-slate-100 shadow-2xl transition-transform duration-300 z-[70] flex flex-col ${showStats ? 'translate-x-0' : '-translate-x-full'}`}>
+          <div className="p-4 flex justify-between items-center bg-slate-50 border-b border-slate-100 shrink-0">
+            <h3 className="font-black text-slate-800 text-sm flex items-center gap-2"><BarChart2 size={16} className="text-indigo-500"/> 状态大盘</h3>
+            <button onClick={()=>setShowStats(false)} className="p-1 hover:bg-slate-200 rounded-full transition-colors"><X size={18} className="text-slate-500"/></button>
+          </div>
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-6">
+            <div><h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5"><TrendingUp size={12}/> Mastery Trend</h4>{renderTrendChart(masteryTrend, 140)}</div>
+            
+            {/* 核心功能：状态数量分布列表 */}
+            <div className="border-t border-slate-50 pt-5">
+               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5"><Hash size={12}/> 全本状态分布 (Distribution)</h4>
+               <div className="grid grid-cols-2 gap-2">
+                 {Object.entries(deck.phrases.reduce((acc, p) => {
+                    const tag = getPhraseTag(p.score);
+                    acc[tag] = (acc[tag] || 0) + 1;
+                    return acc;
+                 }, {} as Record<string, number>))
+                 .sort((a,b) => {
+                    if (a[0] === '新') return -1; if (b[0] === '新') return 1;
+                    const valA = parseInt(a[0].slice(1)) || 0;
+                    const valB = parseInt(b[0].slice(1)) || 0;
+                    if (a[0][0] !== b[0][0]) return a[0][0] === '错' ? -1 : 1;
+                    return a[0][0] === '错' ? valB - valA : valA - valB;
+                 })
+                 .map(([tag, count]) => (
+                   <div key={tag} className="flex justify-between items-center p-2 rounded-xl bg-slate-50 border border-slate-100 shadow-sm">
+                      <span className="text-[10px] font-black text-white px-2 py-0.5 rounded-md shadow-sm" style={{backgroundColor: getScoreBadgeColor(tag === '新' ? undefined : (tag.startsWith('对') ? 1 : -1))}}>{tag}</span>
+                      <span className="font-mono font-black text-slate-700 text-xs">{count}</span>
+                   </div>
+                 ))}
+               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
