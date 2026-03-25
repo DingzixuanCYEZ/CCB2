@@ -310,7 +310,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
       </div>
     );
   };
-  // src/components/StudySession.tsx (Part 2)
+  // src/components/StudySession.tsx (Part 2 - 修正完整版)
 
   // ========== UI 渲染逻辑 ==========
 
@@ -393,7 +393,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     );
   }
 
-  // 2. 异常拦截与冷却池唤醒机制 (解决截图 1 中的报错)
+  // 2. 异常拦截与冷却池唤醒机制 (解决图 1 的定义缺失)
   if (!currentPhrase) {
     if (deck.coolingPool && deck.coolingPool.length > 0) {
       return (
@@ -408,7 +408,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                 const awakenedIds = deck.coolingPool!.map(c => c.id);
                 onUpdateDeck({ ...deck, queue: awakenedIds, coolingPool: [] });
                 setActiveId(awakenedIds[0]); 
-            }} className="py-4 text-lg font-black bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-200 border-0">立即唤醒并继续</Button>
+            }} className="py-4 text-lg font-black bg-sky-500 hover:bg-sky-600 shadow-lg shadow-sky-200 border-0 text-white">立即唤醒并继续</Button>
             <Button fullWidth variant="ghost" onClick={handleRequestExit} className="mt-3">退出并查看报告</Button>
           </div>
         </div>
@@ -423,15 +423,19 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     );
   }
 
-  // 3. 正常复习主 UI
+  // 3. 核心变量计算 (解决编译报错中的 Cannot find name)
+  const liveMasteryValue = masteryTrend.length > 0 ? masteryTrend[masteryTrend.length - 1].v : startMastery;
   const isEnToCn = deck.studyMode === 'EN_CN';
   const questionText = isEnToCn ? currentPhrase.english : currentPhrase.chinese;
   const answerText = isEnToCn ? currentPhrase.chinese : currentPhrase.english;
-  
-  // 实时检测当前后推是否会导致冻结
+  const isNew = activeScore === undefined || activeScore === 0;
+  const profLabelsNew = ["完全没思路", "思路大体对", "缺东西", "差一点", "正确但不确定", "正确"];
+  const profLabelsOld = ["完全没印象", "印象不清楚", "缺东西", "差一点", "勉强想出", "快速想出"];
+  const currentLabels = isNew ? profLabelsNew : profLabelsOld;
   const currentBackDisplay = customBack ?? (prof !== null ? computedBack : watchBackValue);
   const isFrozen = algoSettings.allowFreeze && currentBackDisplay > deck.queue.length - 1;
 
+  // 4. 正常复习主 UI
   return (
     <div className="fixed inset-0 bg-slate-50 z-[100] flex flex-col h-full overflow-hidden">
       {/* 顶部状态栏 */}
@@ -445,14 +449,6 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
             </div>
             <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden relative border border-slate-50">
               <div className="absolute top-0 left-0 h-full transition-all duration-700 ease-out" style={{ width: `${liveMasteryValue}%`, backgroundColor: getDynamicColor(liveMasteryValue) }}></div>
-            </div>
-            <div className="flex justify-between items-start mt-1 leading-none">
-              <span className="text-[10px] font-black" style={{ color: getDynamicColor(liveMasteryValue) }}>{liveMasteryValue.toFixed(2)}%</span>
-              <span className="text-[10px] font-bold text-slate-400">
-                <span className="text-emerald-500">{stats.count4_5}</span>
-                <span className="text-slate-300 mx-0.5">/</span><span className="text-amber-500">{stats.count2_3}</span>
-                <span className="text-slate-300 mx-0.5">/</span><span className="text-rose-500">{stats.count0_1}</span>
-              </span>
             </div>
           </div>
           <div className="flex gap-1 shrink-0 items-center">
@@ -523,7 +519,6 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
             ) : (
               <div className="flex-1 overflow-y-auto custom-scrollbar p-6 sm:p-8 flex flex-col items-center w-full relative">
                 
-                {/* 题目展示 */}
                 <div className="w-full flex flex-col items-center text-center pt-4 mb-6">
                   <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4 border px-2 py-0.5 rounded-full">
                     {isNew ? 'NEW' : `Score: ${activeScore?.toFixed(2)}`}
@@ -562,7 +557,6 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                     )}
 
                     <div className="w-full mt-auto space-y-5">
-                      {/* 难度评价 */}
                       <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 shadow-sm">
                         <div className="flex justify-between items-center mb-3 ml-1">
                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">记忆难度 (Difficulty)</span>
@@ -575,7 +569,6 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                         </div>
                       </div>
 
-                      {/* 熟练度 - 强制单行 */}
                       <div>
                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 ml-1">熟练度评分 (Proficiency)</span>
                          <div className="grid grid-cols-6 gap-1.5 sm:gap-2">
@@ -592,7 +585,6 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                          </div>
                       </div>
 
-                      {/* 明亮风格后推预测面板 - 包含冷却预警 */}
                       <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 shadow-sm animate-in slide-in-from-bottom-2">
                         <div className="flex justify-between items-start mb-4">
                             <div className="flex flex-col">
@@ -648,7 +640,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                 <Button fullWidth onClick={handleShowAnswer} className="py-4 text-lg font-black shadow-lg shadow-indigo-100">查看答案 (Space)</Button>
               ) : (
                 <div className="flex gap-3">
-                  <button onClick={() => handleFinishCard(true)} className="flex-1 flex items-center justify-center gap-2 py-4 bg-slate-100 text-slate-600 rounded-xl font-black text-sm hover:bg-slate-200 transition-all border border-slate-200 shadow-sm"><Eye size={18}/> 观望 (W)</button>
+                  <button onClick={() => handleFinishCard(true)} className="flex-1 flex items-center justify-center gap-2 py-4 bg-slate-50 text-slate-600 rounded-xl font-black text-sm hover:bg-slate-100 transition-all border border-slate-200 shadow-sm"><Eye size={18}/> 观望 (W)</button>
                   <Button disabled={prof === null || isAntiTouchActive} fullWidth onClick={() => handleFinishCard(false)} className={`flex-[2] py-4 text-lg font-black shadow-lg transition-all ${prof === null ? 'bg-slate-200 text-slate-400 border-none' : 'bg-indigo-600 text-white shadow-indigo-200/50'}`}>
                     确认继续 (Enter) <ArrowRight size={20} className="ml-2" />
                   </Button>
@@ -658,7 +650,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
           </div>
         </div>
 
-        {/* 侧边栏队列 - 包含还原 V1 图 2 的冷却分割线 */}
+        {/* 侧边栏队列 - 包含冷却分割线 (修复 getPhraseTag 报错) */}
         <div className={`absolute top-0 right-0 h-full w-[320px] bg-white border-l border-slate-100 shadow-2xl transition-transform duration-300 z-[70] flex flex-col ${showQueue ? 'translate-x-0' : 'translate-x-full'}`}>
           <div className="p-4 flex justify-between items-center bg-slate-50 border-b border-slate-100 shrink-0">
             <h3 className="font-black text-slate-800 text-sm flex items-center gap-2"><ListOrdered className="w-4 h-4"/> 实时复习队列</h3>
@@ -666,7 +658,6 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
           </div>
           
           <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1.5">
-            {/* 第一部分：主队列 */}
             {deck.queue.map((id, idx) => {
               const p = deck.phrases.find(item => item.id === id);
               if (!p) return null;
@@ -677,12 +668,11 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                     <span className={`font-black text-[10px] w-4 text-center shrink-0 ${isCurrent ? 'text-indigo-600' : 'text-slate-300'}`}>{idx+1}</span>
                     <div className={`truncate font-bold text-xs ${isCurrent ? 'text-indigo-800' : 'text-slate-600'}`}>{p.chinese}</div>
                   </div>
-                  <div className="px-1.5 py-0.5 rounded text-[9px] font-black text-white shrink-0 ml-2 shadow-sm" style={{backgroundColor: getScoreBadgeColor(p.score)}}>{getPhraseTag(p.score)}</div>
+                  <div className="px-1.5 py-0.5 rounded text-[9px] font-black text-white shrink-0 ml-2 shadow-sm" style={{backgroundColor: getScoreBadgeColor(p.score)}}>{getPhraseLabel(p.score)}</div>
                 </div>
               )
             })}
 
-            {/* 第二部分：冷却池分割线 (完美还原 V1 图 2) */}
             {deck.coolingPool && deck.coolingPool.length > 0 && (
               <>
                 <div className="relative py-4">
@@ -698,7 +688,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                         <span className="font-black text-[10px] w-6 text-center shrink-0 text-sky-500">{c.wait}</span>
                         <div className="truncate font-bold text-xs text-slate-500">{p.chinese}</div>
                       </div>
-                      <div className="px-1.5 py-0.5 rounded text-[9px] font-black text-white shrink-0 ml-2 opacity-50" style={{backgroundColor: getScoreBadgeColor(p.score)}}>{getPhraseTag(p.score)}</div>
+                      <div className="px-1.5 py-0.5 rounded text-[9px] font-black text-white shrink-0 ml-2 opacity-50" style={{backgroundColor: getScoreBadgeColor(p.score)}}>{getPhraseLabel(p.score)}</div>
                     </div>
                   );
                 })}
@@ -707,7 +697,6 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
           </div>
         </div>
 
-        {/* 左侧统计抽屉 */}
         <div className={`absolute top-0 left-0 h-full w-[320px] bg-white border-r border-slate-100 shadow-2xl transition-transform duration-300 z-[70] flex flex-col ${showStats ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="p-5 flex justify-between items-center bg-slate-50 border-b border-slate-100 shrink-0">
             <h3 className="font-black text-slate-800 text-sm flex items-center gap-2"><BarChart2 className="w-4 h-4"/> 状态大盘 (Stats)</h3>
@@ -717,23 +706,6 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
             <div>
                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Mastery Trend</h4>
                {renderTrendChart(masteryTrend, 140)}
-            </div>
-            <div className="border-t border-slate-100 pt-6">
-               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">打分分布</h4>
-               <div className="grid grid-cols-2 gap-3">
-                 <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 text-emerald-700">
-                    <div className="text-[10px] font-bold opacity-80 uppercase">优秀 (4-5)</div>
-                    <div className="text-xl font-black">{stats.count4_5}</div>
-                 </div>
-                 <div className="bg-amber-50 p-3 rounded-xl border border-amber-100 text-amber-700">
-                    <div className="text-[10px] font-bold opacity-80 uppercase">一般 (2-3)</div>
-                    <div className="text-xl font-black">{stats.count2_3}</div>
-                 </div>
-                 <div className="bg-rose-50 p-3 rounded-xl border border-rose-100 text-rose-700 col-span-2 flex justify-between items-center">
-                    <div><div className="text-[10px] font-bold opacity-80 uppercase">困难 (0-1)</div><div className="text-xl font-black">{stats.count0_1}</div></div>
-                    <XCircle className="w-8 h-8 opacity-20" />
-                 </div>
-               </div>
             </div>
           </div>
         </div>
