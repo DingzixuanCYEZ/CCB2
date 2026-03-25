@@ -249,7 +249,6 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
       setCultivationGain(prev => prev + gainMap[prof]);
     }
 
-    const isCleared = finalBack > algoSettings.cap;
     const updatedPhrase: Phrase = {
       ...currentPhrase,
       score: isWatch ? currentPhrase.score : newScore,
