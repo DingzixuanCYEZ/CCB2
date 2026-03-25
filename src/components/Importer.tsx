@@ -89,6 +89,7 @@ export const Importer: React.FC<ImporterProps> = ({ onImport, onBack }) => {
         diff: 2.5,              // 默认记忆难度
         back: 0,                // 初始 back 为 0，立马进入复习队列
         date: today,
+        clearedDate: today,
         totalReviews: item.score ? Math.abs(Math.ceil(item.score)) : 0,
         totalWrong: item.totalWrong,
         mastery: 0
