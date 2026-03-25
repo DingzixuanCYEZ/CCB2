@@ -31,7 +31,12 @@ import { getScoreBadgeColor, getDynamicColor } from './utils/algo';
 const STORAGE_KEY = 'recallflow_v2_decks';
 const STATS_KEY = 'recallflow_v2_stats';
 const FOLDERS_KEY = 'recallflow_v2_folders';
-const DEFAULT_CAP = 100;
+const getAlgoSettings = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('recallflow_v2_algo_settings') || '{}');
+    return { cap: saved.cap || 100, d: saved.d ?? 10 };
+  } catch { return { cap: 100, d: 10 }; }
+};
 
 const getPhraseTag = (p: Phrase) => {
   if (p.score === undefined || p.score === 0) return '新';
@@ -183,7 +188,8 @@ export const App: React.FC = () => {
                const pDate = updatedP.date || todayDays;
                const gap = todayDays - pDate;
                if (gap > 0) {
-                   const decay = DEFAULT_CAP * gap / 10 + DEFAULT_CAP;
+                   const { cap, d } = getAlgoSettings();
+                   const decay = cap + gap * d;
                    updatedP.back = (updatedP.back || 0) - decay;
                    updatedP.date = todayDays;
                }
@@ -214,7 +220,8 @@ export const App: React.FC = () => {
   },[]);
 
   const getPendingCount = useCallback((deck: Deck) => {
-    return deck.phrases.filter(p => p.score !== undefined && (p.back || 0) <= 0).length;
+    const { cap } = getAlgoSettings();
+    return deck.phrases.filter(p => p.score !== undefined && (p.back || 0) <= cap).length;
   },[]);
 
   const hasPendingReviews = useCallback((scope: 'deck' | 'folder', id: string): boolean => {
@@ -258,51 +265,106 @@ export const App: React.FC = () => {
     const pendingDecks = decks.filter(d => getPendingCount(d) > 0);
     const totalPending = Array.from(selectedDeckIds).reduce((sum, id) => sum + getPendingCount(decks.find(d => d.id === id)!), 0);
 
+    const getAllDescendantDecks = (folderId: string | null): string[] => {
+      let ids: string[] = pendingDecks.filter(d => (d.folderId || null) === folderId).map(d => d.id);
+      folders.filter(f => (f.parentId || null) === folderId).forEach(cf => {
+          ids = ids.concat(getAllDescendantDecks(cf.id));
+      });
+      return ids;
+    };
+
+    const renderFolderNode = (folderId: string | null, depth: number) => {
+      const childFolders = folders.filter(f => (f.parentId || null) === folderId);
+      const childDecks = pendingDecks.filter(d => (d.folderId || null) === folderId);
+      
+      if (childFolders.length === 0 && childDecks.length === 0 && folderId !== null) return null;
+
+      const descendantDeckIds = getAllDescendantDecks(folderId);
+      if (descendantDeckIds.length === 0 && folderId !== null) return null;
+
+      const isAllSelected = descendantDeckIds.length > 0 && descendantDeckIds.every(id => selectedDeckIds.has(id));
+      const isSomeSelected = descendantDeckIds.some(id => selectedDeckIds.has(id));
+
+      const toggleFolder = () => {
+         const next = new Set(selectedDeckIds);
+         if (isAllSelected) {
+             descendantDeckIds.forEach(id => next.delete(id));
+         } else {
+             descendantDeckIds.forEach(id => next.add(id));
+         }
+         setSelectedDeckIds(next);
+      };
+
+      return (
+         <div key={folderId || 'root'} className={`flex flex-col gap-2 ${depth > 0 ? 'ml-4 pl-3 border-l-2 border-slate-100' : ''}`}>
+             {folderId !== null && (
+                 <div onClick={toggleFolder} className="flex items-center gap-3 cursor-pointer py-2 group">
+                     <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isAllSelected ? 'bg-indigo-500 border-indigo-500' : isSomeSelected ? 'bg-indigo-200 border-indigo-200' : 'bg-white border-slate-300'}`}>
+                        {isAllSelected && <CheckCircle2 className="w-3 h-3 text-white" />}
+                        {!isAllSelected && isSomeSelected && <div className="w-1.5 h-1.5 bg-white rounded-sm" />}
+                     </div>
+                     <div className="flex items-center gap-2">
+                         <FolderIcon className="w-4 h-4 text-amber-400" />
+                         <span className="font-bold text-slate-700 text-sm group-hover:text-indigo-600 transition-colors">{folders.find(f => f.id === folderId)?.name}</span>
+                     </div>
+                 </div>
+             )}
+             <div className="flex flex-col gap-2">
+                 {childFolders.map(f => renderFolderNode(f.id, depth + 1))}
+                 {childDecks.map(deck => {
+                    const count = getPendingCount(deck);
+                    const isSelected = selectedDeckIds.has(deck.id);
+                    return (
+                      <div key={deck.id} onClick={() => {
+                        const next = new Set(selectedDeckIds);
+                        if (next.has(deck.id)) next.delete(deck.id); else next.add(deck.id);
+                        setSelectedDeckIds(next);
+                      }} className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${isSelected ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:border-indigo-200 bg-white'}`}>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-indigo-500 border-indigo-500' : 'border-slate-300 bg-white'}`}>
+                            {isSelected && <CheckCircle2 className="w-3 h-3 text-white"/>}
+                          </div>
+                          <div>
+                            <div className={`font-bold text-sm ${isSelected ? 'text-indigo-900' : 'text-slate-700'}`}>{deck.name}</div>
+                            <div className="text-[10px] font-medium text-slate-400 mt-0.5">{deck.subject === 'English' ? '英语' : '语文'}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-lg font-black text-rose-500">{count}</span>
+                          <span className="text-[10px] font-bold text-slate-400">词</span>
+                        </div>
+                      </div>
+                    );
+                 })}
+             </div>
+         </div>
+      );
+    };
+
     return (
       <div className="max-w-3xl mx-auto p-6 space-y-6 animate-in fade-in duration-300">
         <div className="flex items-center gap-4">
           <button onClick={() => setDailyReviewSetup(false)} className="p-2 hover:bg-slate-100 rounded-full"><ArrowLeft /></button>
           <div>
             <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2"><Flame className="text-rose-500"/> 每日复习调度中心</h2>
-            <p className="text-xs font-bold text-slate-400 mt-1">选中的词条在复习后 back &gt; cap 即视为通关并移出队列</p>
+            <p className="text-xs font-bold text-slate-400 mt-1">按照词条待复习积压深度 (Back) 排序，优先复习最紧急的词</p>
           </div>
         </div>
 
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
           <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-50">
             <span className="text-sm font-black text-slate-600">待复习词组本 ({pendingDecks.length})</span>
-            <Button variant="ghost" onClick={() => setSelectedDeckIds(new Set(pendingDecks.map(d => d.id)))}>全选 / 全不选</Button>
+            <div className="flex gap-2">
+              <Button variant="outline" className="text-xs py-1.5 px-3 h-auto border-slate-200" onClick={() => setSelectedDeckIds(new Set(pendingDecks.map(d => d.id)))}>全选</Button>
+              <Button variant="outline" className="text-xs py-1.5 px-3 h-auto border-slate-200" onClick={() => setSelectedDeckIds(new Set())}>全不选</Button>
+            </div>
           </div>
           
           {pendingDecks.length === 0 ? (
             <div className="text-center py-12 text-slate-400 font-bold">今天没有需要复习的词条啦！🎉</div>
           ) : (
-            <div className="space-y-3 max-h-[50vh] overflow-y-auto custom-scrollbar pr-2">
-              {pendingDecks.map(deck => {
-                const count = getPendingCount(deck);
-                const isSelected = selectedDeckIds.has(deck.id);
-                return (
-                  <div key={deck.id} onClick={() => {
-                    const next = new Set(selectedDeckIds);
-                    if (next.has(deck.id)) next.delete(deck.id); else next.add(deck.id);
-                    setSelectedDeckIds(next);
-                  }} className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${isSelected ? 'border-rose-500 bg-rose-50' : 'border-slate-100 hover:border-rose-200'}`}>
-                    <div className="flex items-center gap-4">
-                      <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'border-rose-500 bg-rose-500' : 'border-slate-300'}`}>
-                        {isSelected && <CheckCircle2 className="w-4 h-4 text-white"/>}
-                      </div>
-                      <div>
-                        <div className={`font-black ${isSelected ? 'text-rose-900' : 'text-slate-700'}`}>{deck.name}</div>
-                        <div className="text-[10px] font-bold text-slate-400 mt-0.5">{deck.subject === 'English' ? '英语' : '语文'}</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl font-black text-rose-500">{count}</span>
-                      <span className="text-xs font-bold text-slate-400">词</span>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="max-h-[50vh] overflow-y-auto custom-scrollbar pr-2">
+              {renderFolderNode(null, 0)}
             </div>
           )}
         </div>
@@ -801,8 +863,8 @@ export const App: React.FC = () => {
                      ...deck,
                      phrases: deck.phrases.map(p => {
                        if (p.score !== undefined && p.score !== 0) {
-                         const DEFAULT_CAP = 100;
-                         const decay = DEFAULT_CAP * 1 / 10 + DEFAULT_CAP;
+                         const { cap, d } = getAlgoSettings();
+                         const decay = cap + 1 * d;
                          return { ...p, back: (p.back || 0) - decay };
                        }
                        return p;
