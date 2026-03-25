@@ -99,12 +99,16 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
   const [phase, setPhase] = useState<'QUESTION' | 'ANSWER' | 'REPORT'>('QUESTION');
   const [isFinished, setIsFinished] = useState(false);
   
-  const[algoSettings, setAlgoSettings] = useState(() => {
+  const [algoSettings, setAlgoSettings] = useState(() => {
     try {
       const saved = localStorage.getItem(ALGO_SETTINGS_KEY);
-      return saved ? JSON.parse(saved) : { tierIdx: 2, cap: 100, timeLimit: 10, allowFreeze: true };
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return { ...parsed, d: parsed.d ?? 10 };
+      }
+      return { tierIdx: 2, cap: 100, d: 10, timeLimit: 10, allowFreeze: true };
     } catch {
-      return { tierIdx: 2, cap: 100, timeLimit: 10, allowFreeze: true };
+      return { tierIdx: 2, cap: 100, d: 10, timeLimit: 10, allowFreeze: true };
     }
   });
 
@@ -513,6 +517,8 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
               </div>
               <label className="text-xs font-bold text-slate-600 block mb-2">Cap (每日复习通关门槛)</label>
               <input type="number" min="10" value={algoSettings.cap} onChange={(e) => setAlgoSettings({ ...algoSettings, cap: Math.max(10, parseInt(e.target.value) || 100) })} className="w-full p-2 border border-slate-200 rounded-lg text-sm font-black outline-none focus:border-indigo-500 mb-4" />
+              <label className="text-xs font-bold text-slate-600 block mb-2">衰减公差 d (每日额外后推扣除)</label>
+              <input type="number" min="0" value={algoSettings.d ?? 10} onChange={(e) => setAlgoSettings({ ...algoSettings, d: Math.max(0, parseInt(e.target.value) || 0) })} className="w-full p-2 border border-slate-200 rounded-lg text-sm font-black outline-none focus:border-indigo-500 mb-4" />
               <label className="text-xs font-bold text-slate-600 block mb-2">题目限时 (秒，0为不限)</label>
               <input type="number" min="0" value={algoSettings.timeLimit} onChange={(e) => setAlgoSettings({ ...algoSettings, timeLimit: Math.max(0, parseInt(e.target.value) || 0) })} className="w-full p-2 border border-slate-200 rounded-lg text-sm font-black outline-none focus:border-indigo-500" />
             </div>
