@@ -200,11 +200,13 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
     let newScore = isWatch ? activeScore : computedScore;
     let finalNScore = isWatch ? getNScore(activeScore ?? 0, diff) : calculateNextState(activeScore, prof!, diff, gap, C, base, algoSettings.cap).nscore;
 
+    const isCleared = finalBack > algoSettings.cap;
     const updatedPhrase: Phrase = { 
       ...currentPhrase, score: newScore, diff, date: todayDays, back: finalBack, 
       totalReviews: currentPhrase.totalReviews + 1, 
       mastery: calculateMastery(getNScore(newScore ?? 0, diff)), 
-      lastReviewedAt: Date.now() 
+      lastReviewedAt: Date.now(),
+      clearedDate: isCleared ? todayDays : currentPhrase.clearedDate
     };
 
     if (!isWatch && prof !== null) {
@@ -544,7 +546,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
                     {currentPhrase.note && (
                       <div className="w-full bg-amber-50/50 p-4 rounded-xl border border-amber-100 text-left relative mb-5 shadow-sm"><div className="absolute top-4 left-4"><StickyNote size={16} className="text-amber-400" /></div><div className="pl-7 text-sm font-bold text-slate-600 whitespace-pre-wrap leading-normal">{renderFormattedText(cleanNote(currentPhrase.note))}</div></div>
                     )}
-                    <div className="text-center py-2 px-4 rounded-xl w-full mb-6"><p className="text-3xl font-black text-indigo-600 leading-tight break-words">{renderFormattedText(answerText)}</p></div>
+                    <div className="text-center py-2 px-4 rounded-xl w-full mb-6"><p className="text-xl sm:text-2xl font-black text-indigo-600 leading-tight break-words">{renderFormattedText(answerText)}</p></div>
                     <div className="w-full mt-auto space-y-4">
                       <div className="flex items-center gap-3 mb-2 pl-1">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">难度 {diff}</span>
