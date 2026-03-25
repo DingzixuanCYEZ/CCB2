@@ -259,6 +259,7 @@ export const DeckEditor: React.FC<DeckEditorProps> = ({ deck, onUpdateDeck, onAd
         diff,
         back,
         date: existing?.date || Math.floor(Date.now() / 86400000),
+        clearedDate: existing?.clearedDate || Math.floor(Date.now() / 86400000),
         mastery: existing?.mastery || 0,
         totalReviews: existing?.totalReviews || 0,
         totalWrong: existing?.totalWrong || 0
@@ -288,6 +289,7 @@ export const DeckEditor: React.FC<DeckEditorProps> = ({ deck, onUpdateDeck, onAd
         diff: 2.5, 
         back: 0, 
         date: today,
+        clearedDate: today,
         mastery: 0, 
         totalReviews: 0, 
         totalWrong: 0, 
@@ -402,6 +404,7 @@ export const DeckEditor: React.FC<DeckEditorProps> = ({ deck, onUpdateDeck, onAd
                       back: 0,
                       date: today,
                       mastery: 0,
+                      clearedDate: today,
                       totalReviews: 0,
                       totalWrong: 0,
                       lastReviewedAt: undefined
@@ -685,7 +688,7 @@ export const DeckEditor: React.FC<DeckEditorProps> = ({ deck, onUpdateDeck, onAd
                   <Button variant="ghost" className="py-3 text-sm font-bold text-red-500 hover:text-red-600 hover:bg-red-50 whitespace-nowrap" onClick={() => setShowResetConfirm(true)}><RotateCcw className="w-4 h-4 mr-2"/> 清空进度</Button>
                   <Button variant="outline" className="py-3 text-sm font-bold whitespace-nowrap" onClick={()=>{setBatchText(generateBatchText()); setShowBatchModal(true);}}><FileText className="w-4 h-4 mr-2"/> 批量编辑</Button>
                   <Button className="py-3 text-sm font-bold whitespace-nowrap" onClick={()=>{
-                      const n: Phrase = { id: uuidv4(), english: '', chinese: '', note: '', diff: 2.5, back: 0, date: Math.floor(Date.now() / 86400000), totalReviews: 0, score: undefined };
+                      const n: Phrase = { id: uuidv4(), english: '', chinese: '', note: '', diff: 2.5, back: 0, date: Math.floor(Date.now() / 86400000), clearedDate: Math.floor(Date.now() / 86400000), totalReviews: 0, score: undefined };
                       const newPs =[n,...phrases];
                       setPhrases(newPs);
                       onUpdateDeck({...deck, subject, phrases: newPs, queue:[n.id,...deck.queue]});
