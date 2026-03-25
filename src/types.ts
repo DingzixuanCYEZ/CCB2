@@ -11,6 +11,7 @@ export interface Phrase {
   diff?: number;      // 记忆难度 (0-5)，默认 2.5
   back?: number;      // 后推位置数 / 长期复习队列等待值
   date?: number;      // 上次复习的日期（距离纪元的天数）
+  clearedDate?: number; // 最新复习通过时间（距离纪元的天数）
 
   // ========== 统计与 UI 渲染字段 ==========
   totalReviews: number;
