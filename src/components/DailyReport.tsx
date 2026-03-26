@@ -45,8 +45,15 @@ export const DailyReport: React.FC<DailyReportProps> = ({ stats, globalStats, de
     const relevant = activities.filter(a => a.deckSubject === subject);
     const total = relevant.reduce((sum, a) => sum + a.count, 0);
     const time = relevant.reduce((sum, a) => sum + a.durationSeconds, 0);
-    // 估算单科修为增量
-    const gain = relevant.reduce((sum, a) => sum + (a.count4_5 * 0.8 - a.count0_1 * 0.8), 0);
+    
+    // 精确计算：利用保存的 profCounts 六项分布
+    const gainMap = [-1.0, -0.6, -0.2, 0.2, 0.6, 1.0];
+    const gain = relevant.reduce((sum, a) => {
+       if (!a.profCounts) return sum; // 处理旧数据
+       const sessionGain = a.profCounts.reduce((s, count, idx) => s + count * gainMap[idx], 0);
+       return sum + sessionGain;
+    }, 0);
+
     return { total, time, gain };
   };
 
