@@ -236,15 +236,20 @@ export const App: React.FC = () => {
     }
   },[decks, folders, getPendingCount]);
 
-  const handleSessionComplete = useCallback((deckId: string, dur: number, profCounts: number[], cultGain: number, mode: 'STUDY'|'EXAM'|'DAILY_REVIEW' = 'STUDY') => {
-    const total = profCounts.reduce((a, b) => a + b, 0);
+   const handleSessionComplete = useCallback((deckId: string, dur: number, profCounts: number[], cultGain: number, mode: 'STUDY'|'EXAM'|'DAILY_REVIEW' = 'STUDY') => {
+    const c01 = profCounts[0] + profCounts[1];
+    const c23 = profCounts[2] + profCounts[3];
+    const c45 = profCounts[4] + profCounts[5];
+    const total = c01 + c23 + c45;
+    
     if (total === 0) return;
     setStats(prev => {
       const subj = decks.find(d => d.id === deckId)?.subject || 'English';
       const activities = [...(prev.daily.activities || [])];
       activities.push({ 
-        deckId, deckName: decks.find(d => d.id === deckId)?.name || '每日大盘', 
+        deckId, deckName: decks.find(d => d.id === deckId)?.name || (mode === 'DAILY_REVIEW' ? '每日大盘' : '未知词本'), 
         mode, count: total, profCounts, 
+        count0_1: c01, count2_3: c23, count4_5: c45, // 补全 ActivityLog 必需字段
         durationSeconds: dur, masteryGain: 0, timestamp: Date.now(), deckSubject: subj 
       });
       
@@ -763,7 +768,7 @@ export const App: React.FC = () => {
           onUpdateDeck={updateDeck}
           onExit={() => setView(AppView.DASHBOARD)}
           onTimeUpdate={handleTimeUpdate}
-          onSessionComplete={(dur, profCounts, cultGain) => handleSessionComplete(activeDeckId, dur, profCounts, cultGain, 'STUDY')}
+          onSessionComplete={(dur, pCounts, cultGain) => handleSessionComplete(activeDeckId!, dur, pCounts, cultGain, 'STUDY')}
         />
       )}
 
@@ -775,7 +780,7 @@ export const App: React.FC = () => {
           onUpdateDeck={updateDeck}
           onExit={() => setView(AppView.DASHBOARD)}
           onTimeUpdate={handleTimeUpdate}
-          onSessionComplete={(dur, profCounts, cultGain) => handleSessionComplete(activeDeckId, dur, profCounts, cultGain, 'STUDY')}
+          onSessionComplete={(dur, pCounts, cultGain) => handleSessionComplete(activeDeckId!, dur, pCounts, cultGain, 'STUDY')}
         />
       )}
       
@@ -787,7 +792,7 @@ export const App: React.FC = () => {
           }}
           onExit={() => setView(AppView.DASHBOARD)}
           onTimeUpdate={handleTimeUpdate}
-          onSessionComplete={(dur, profCounts, cultGain) => handleSessionComplete(activeDeckId, dur, profCounts, cultGain, 'STUDY')}
+          onSessionComplete={(dur, pCounts, cultGain) => handleSessionComplete(activeDeckId!, dur, pCounts, cultGain, 'STUDY')}
         />
       )}
 	{/* 单词本管理 */}
