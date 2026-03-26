@@ -14,6 +14,8 @@ import { getDynamicColor, getScoreBadgeColor } from '../utils/algo';
 
 interface DeckEditorProps {
   deck: Deck;
+  folders: Folder[]; // 新增
+  onDeleteDeck: (id: string) => void; // 新增
   onUpdateDeck: (updatedDeck: Deck) => void;
   onAddDecks?: (newDecks: Deck[]) => void;
   onBack: () => void;
@@ -572,8 +574,9 @@ export const DeckEditor: React.FC<DeckEditorProps> = ({ deck, onUpdateDeck, onAd
   };
 
   const renderMacroChart = () => {
-      const history =[...(deck.sessionHistory || [])].sort((a,b) => a.timestamp - b.timestamp);
-      if (history.length === 0) return <div className="p-10 text-center text-slate-400 text-sm italic">需要更多数据生成宏观趋势</div>;
+      // 这里的逻辑已经很完整了，如果显示不出来，请检查 history 是否有数据
+      const history = [...(deck.sessionHistory || [])].sort((a,b) => a.timestamp - b.timestamp);
+      if (history.length === 0) return <div className="p-20 text-center"><BarChart3 className="w-12 h-12 text-slate-200 mx-auto mb-4" /><p className="text-slate-400 text-sm italic">暂无历史数据，去背诵一场吧！</p></div>;
       
       let accumulatedTime = 0;
       let allPoints: {t: number, v: number}[] =[{t: 0, v: 0}];
@@ -950,13 +953,26 @@ export const DeckEditor: React.FC<DeckEditorProps> = ({ deck, onUpdateDeck, onAd
                          </div>
                      </label>
                  </div>
-                 <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                     <label className="text-xs font-black text-slate-400 uppercase mb-2 block">移动到文件夹</label>
+                     <select 
+                        className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm font-bold"
+                        value={deck.folderId || ""}
+                        onChange={(e) => onUpdateDeck({...deck, folderId: e.target.value || undefined})}
+                     >
+                        <option value="">(无文件夹 - 根目录)</option>
+                        {/* 这里假设你通过 props 传了全局 folders 进来 */}
+                        {Array.isArray(folders) && folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                     </select>
+                 </div>
+                 
+                 <div className="bg-rose-50 p-4 rounded-xl border border-rose-100 mt-4">
                      <div className="flex items-center justify-between">
                          <div className="pr-4">
-                             <div className="text-sm font-black text-indigo-900 mb-1">交换题目与答案</div>
-                             <div className="text-xs text-indigo-700/70">将中文题目与英文答案互换</div>
+                             <div className="text-sm font-black text-rose-900 mb-1">危险区域</div>
+                             <div className="text-xs text-rose-700/70">永久删除本词组本及其所有历史记录</div>
                          </div>
-                         <Button onClick={handleSwapQA} variant="outline" className="text-xs px-3 py-1.5 h-auto font-black bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-50">Swap</Button>
+                         <Button onClick={() => { if(confirm("确定要删除本词本吗？")) { onDeleteDeck(deck.id); onBack(); } }} variant="danger" className="text-xs px-3 py-1.5 h-auto font-black">删除词本</Button>
                      </div>
                  </div>
              </div>
