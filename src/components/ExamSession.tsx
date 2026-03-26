@@ -60,7 +60,7 @@ export const ExamSession: React.FC<ExamSessionProps> = ({
   
   // 成绩与统计
   const [results, setResults] = useState<{ phrase: Phrase, prof: number | 'watch', diff: number }[]>([]);
-  const[stats, setStats] = useState({ count0_1: 0, count2_3: 0, count4_5: 0 });
+  const [profCounts, setProfCounts] = useState([0, 0, 0, 0, 0, 0]);
   const [cultivationGain, setCultivationGain] = useState<number>(0);
   
   const [sessionDuration, setSessionDuration] = useState(0);
@@ -215,11 +215,11 @@ export const ExamSession: React.FC<ExamSessionProps> = ({
       newScore = res.newScore;
       finalBack = customBack !== null ? customBack : computedBack;
 
-      setStats(prev => ({
-        count0_1: prev.count0_1 + (prof <= 1 ? 1 : 0),
-        count2_3: prev.count2_3 + (prof >= 2 && prof <= 3 ? 1 : 0),
-        count4_5: prev.count4_5 + (prof >= 4 ? 1 : 0),
-      }));
+      setProfCounts(prev => {
+        const next = [...prev];
+        next[prof!] += 1;
+        return next;
+      });
 
       const gainMap =[-1.0, -0.6, -0.2, 0.2, 0.6, 1.0];
       setCultivationGain(prev => prev + gainMap[prof]);
@@ -291,7 +291,7 @@ export const ExamSession: React.FC<ExamSessionProps> = ({
     onUpdateDeck({ ...deck, queue: finalQueue, phrases: finalPhrases });
 
     if (onSessionComplete && results.length > 0) {
-        onSessionComplete(sessionDuration, stats, cultivationGain);
+        onSessionComplete(sessionDuration, profCounts, cultivationGain);
     }
     onExit();
   };
