@@ -128,7 +128,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
   const[computedScore, setComputedScore] = useState<number>(0);
   const [isAntiTouchActive, setIsAntiTouchActive] = useState(false);
 
-  const [stats, setStats] = useState({ count0_1: 0, count2_3: 0, count4_5: 0 });
+  const [profCounts, setProfCounts] = useState([0, 0, 0, 0, 0, 0]);
   const[cultivationGain, setCultivationGain] = useState<number>(0);
   const [sessionResults, setSessionResults] = useState<{phrase: Phrase, prof: number | 'watch', isCleared: boolean}[]>([]);
 
@@ -240,11 +240,11 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
       newScore = res.newScore;
       finalBack = customBack !== null ? customBack : calculateBack(res.nscore, C, base);
 
-      setStats(prev => ({
-        count0_1: prev.count0_1 + (prof <= 1 ? 1 : 0),
-        count2_3: prev.count2_3 + (prof >= 2 && prof <= 3 ? 1 : 0),
-        count4_5: prev.count4_5 + (prof >= 4 ? 1 : 0),
-      }));
+      setProfCounts(prev => {
+        const next = [...prev];
+        next[prof!] += 1;
+        return next;
+      });
       const gainMap =[-1.0, -0.6, -0.2, 0.2, 0.6, 1.0];
       setCultivationGain(prev => prev + gainMap[prof]);
     }
@@ -320,7 +320,7 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
   },[currentPhrase, activeDeck, activeItem, isAntiTouchActive, algoSettings, diff, customBack, prof, dailyQueue, coolingPool, workingDecks, onUpdateDecks, watchBackValue, computedBack]);
 
   const handleRequestExit = () => { setIsFinished(true); setPhase('REPORT'); };
-  const handleFinalExit = () => { if (onSessionComplete) onSessionComplete(sessionDuration, stats, cultivationGain); onExit(); };
+  const handleFinalExit = () => { if (onSessionComplete) onSessionComplete(sessionDuration, profCounts, cultivationGain); onExit(); };
 
   // ========== UI 渲染逻辑 ==========
 
@@ -376,17 +376,17 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
               <span className="text-[10px] font-bold text-slate-800">总计 {stats.count0_1 + stats.count2_3 + stats.count4_5} 次交互</span>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <div className="bg-emerald-50 p-2 rounded-xl border border-emerald-100 text-center">
-                <div className="text-lg font-black text-emerald-600">{stats.count4_5}</div>
-                <div className="text-[9px] font-bold text-emerald-700/60 uppercase">优秀</div>
+              <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 text-center">
+                <div className="text-xl font-black text-emerald-600">{profCounts[4] + profCounts[5]}</div>
+                <div className="text-[10px] font-bold text-emerald-700/60 uppercase">优秀 (4-5分)</div>
               </div>
-              <div className="bg-amber-50 p-2 rounded-xl border border-amber-100 text-center">
-                <div className="text-lg font-black text-amber-600">{stats.count2_3}</div>
-                <div className="text-[9px] font-bold text-amber-700/60 uppercase">一般</div>
+              <div className="bg-amber-50 p-3 rounded-xl border border-amber-100 text-center">
+                <div className="text-xl font-black text-amber-600">{profCounts[2] + profCounts[3]}</div>
+                <div className="text-[10px] font-bold text-amber-700/60 uppercase">一般 (2-3分)</div>
               </div>
-              <div className="bg-rose-50 p-2 rounded-xl border border-rose-100 text-center">
-                <div className="text-lg font-black text-rose-600">{stats.count0_1}</div>
-                <div className="text-[9px] font-bold text-rose-700/60 uppercase">困难</div>
+              <div className="bg-rose-50 p-3 rounded-xl border border-rose-100 text-center">
+                <div className="text-xl font-black text-rose-600">{profCounts[0] + profCounts[1]}</div>
+                <div className="text-[10px] font-bold text-rose-700/60 uppercase">困难 (0-1分)</div>
               </div>
             </div>
           </div>
