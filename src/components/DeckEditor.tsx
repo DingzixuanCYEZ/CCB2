@@ -1,7 +1,7 @@
 // src/components/DeckEditor.tsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Deck, Phrase, DeckSessionLog, DeckSubject, ContentType, StudyMode } from '../types';
+import { Deck, Phrase, DeckSessionLog, DeckSubject, ContentType, StudyMode, Folder } from '../types';
 import { Button } from './Button';
 import { 
   ArrowLeft, Trash2, Save, Plus, X, Search, Edit2, FileText, Check, 
@@ -49,7 +49,7 @@ const formatDate = (ts: number) => {
   return new Date(ts).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); 
 };
 
-export const DeckEditor: React.FC<DeckEditorProps> = ({ deck, onUpdateDeck, onAddDecks, onBack }) => {
+export const DeckEditor: React.FC<DeckEditorProps> = ({ deck, folders, onDeleteDeck, onUpdateDeck, onAddDecks, onBack }) => {
   // === 基础状态 ===
   const[activeTab, setActiveTab] = useState<'phrases' | 'history' | 'macro'>('phrases');
   const [historyMode, setHistoryMode] = useState<'study' | 'exam'>('study');
@@ -962,7 +962,7 @@ export const DeckEditor: React.FC<DeckEditorProps> = ({ deck, onUpdateDeck, onAd
                      >
                         <option value="">(无文件夹 - 根目录)</option>
                         {/* 这里假设你通过 props 传了全局 folders 进来 */}
-                        {Array.isArray(folders) && folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                        {Array.isArray(folders) && folders.map((f: Folder) => <option key={f.id} value={f.id}>{f.name}</option>)}
                      </select>
                  </div>
                  
