@@ -19,7 +19,7 @@ interface StudySessionProps {
   onUpdateDeck: (updatedDeck: Deck) => void;
   onExit: () => void;
   onTimeUpdate: (seconds: number) => void;
-  onSessionComplete?: (durationSeconds: number, counts: { count0_1: number; count2_3: number; count4_5: number }, cultivationGain: number) => void;
+  onSessionComplete?: (durationSeconds: number, profCounts: number[], cultivationGain: number) => void;
 }
 
 const ALGO_TIERS = [
