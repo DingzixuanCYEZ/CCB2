@@ -99,7 +99,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
   const [computedBack, setComputedBack] = useState<number>(1);
   const [computedScore, setComputedScore] = useState<number>(0);
 
-  const [stats, setStats] = useState({ count0_1: 0, count2_3: 0, count4_5: 0 });
+  const [profCounts, setProfCounts] = useState([0, 0, 0, 0, 0, 0]);
   const [cultivationGain, setCultivationGain] = useState<number>(0);
   const [sessionResults, setSessionResults] = useState<{phrase: Phrase, prof: number | 'watch', nscore: number}[]>([]);
   
@@ -211,12 +211,12 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
 
     if (!isWatch && prof !== null) {
       const pVal = prof as number;
-      setStats(prev => ({ 
-        count0_1: prev.count0_1 + (pVal <= 1 ? 1 : 0), 
-        count2_3: prev.count2_3 + (pVal >= 2 && pVal <= 3 ? 1 : 0), 
-        count4_5: prev.count4_5 + (pVal >= 4 ? 1 : 0) 
-      }));
-      const gainMap =[-1.0, -0.6, -0.2, 0.2, 0.6, 1.0];
+      setProfCounts(prev => {
+        const next = [...prev];
+        next[pVal] += 1;
+        return next;
+      });
+      const gainMap = [-1.0, -0.6, -0.2, 0.2, 0.6, 1.0];
       setCultivationGain(prev => prev + gainMap[pVal]);
       setSessionResults(prev => {
         const existingIdx = prev.findIndex(r => r.phrase.id === currentPhrase.id);
@@ -262,7 +262,7 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
   }, [currentPhrase, isAntiTouchActive, algoSettings, diff, customBack, prof, deck, activeId, sessionDuration, onUpdateDeck, activeScore, watchBackValue, computedBack, computedScore]);
 
   const handleRequestExit = () => { setIsFinished(true); setPhase('REPORT'); };
-  const handleFinalExit = () => { if (onSessionComplete) onSessionComplete(sessionDuration, stats, cultivationGain); onExit(); };
+  const handleFinalExit = () => { if (onSessionComplete) onSessionComplete(sessionDuration, profCounts, cultivationGain); onExit(); };
 
   // === 3. 渲染子组件与辅助 JSX ===
   const renderTrendChart = (data = masteryTrend, height = 100) => {
