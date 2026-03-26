@@ -538,7 +538,11 @@ export const DeckEditor: React.FC<DeckEditorProps> = ({ deck, onUpdateDeck, onAd
              </div>
              <div className="text-right">
                  <div className="text-lg font-black" style={{ color: getDynamicColor(accuracy) }}>{accuracy.toFixed(0)}%</div>
-                 <div className="text-[10px] text-slate-400 font-bold">{log.count4_5}优 / {log.count2_3}中 / {log.count0_1}差</div>
+                 <div className="text-[10px] text-slate-400 font-bold">
+                    {log.profCounts ? (log.profCounts[4]+log.profCounts[5]) : log.count4_5}优 / 
+                    {log.profCounts ? (log.profCounts[2]+log.profCounts[3]) : log.count2_3}中 / 
+                    {log.profCounts ? (log.profCounts[0]+log.profCounts[1]) : log.count0_1}差
+                 </div>
              </div>
         </div>
         
