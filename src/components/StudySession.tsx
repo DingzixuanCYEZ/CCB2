@@ -264,6 +264,13 @@ export const StudySession: React.FC<StudySessionProps> = ({ deck, onUpdateDeck, 
   const handleRequestExit = () => { setIsFinished(true); setPhase('REPORT'); };
   const handleFinalExit = () => { if (onSessionComplete) onSessionComplete(sessionDuration, profCounts, cultivationGain); onExit(); };
 
+  // 重新推导 stats 变量以兼容现有 UI 渲染
+  const stats = {
+    count0_1: profCounts[0] + profCounts[1],
+    count2_3: profCounts[2] + profCounts[3],
+    count4_5: profCounts[4] + profCounts[5]
+  };
+
   // === 3. 渲染子组件与辅助 JSX ===
   const renderTrendChart = (data = masteryTrend, height = 100) => {
     if (data.length < 2) return null;
