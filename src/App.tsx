@@ -645,6 +645,7 @@ export const App: React.FC = () => {
                       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden shadow-inner relative"><div className="h-full transition-all duration-700 ease-out" style={{width: `${mastery}%`, backgroundColor: getDynamicColor(mastery)}}></div></div>
                     </div>
                   </div>
+                </div>
                 
                 <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-50 shrink-0">
                   <Button variant="primary" className="text-xs py-2 font-black shadow-sm" onClick={() => { setActiveDeckId(deck.id); setView(AppView.STUDY); }}><Play className="w-3.5 h-3.5 mr-1" /> 复习</Button>
