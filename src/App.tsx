@@ -236,17 +236,25 @@ export const App: React.FC = () => {
     }
   },[decks, folders, getPendingCount]);
 
-  const handleSessionComplete = useCallback((deckId: string, dur: number, counts: any, cultGain: number, mode: 'STUDY'|'EXAM'|'DAILY_REVIEW' = 'STUDY') => {
-    const total = counts.count0_1 + counts.count2_3 + counts.count4_5;
+  const handleSessionComplete = useCallback((deckId: string, dur: number, profCounts: number[], cultGain: number, mode: 'STUDY'|'EXAM'|'DAILY_REVIEW' = 'STUDY') => {
+    const total = profCounts.reduce((a, b) => a + b, 0);
     if (total === 0) return;
     setStats(prev => {
       const subj = decks.find(d => d.id === deckId)?.subject || 'English';
-      const activities =[...(prev.daily.activities || [])];
-      activities.push({ deckId, deckName: decks.find(d => d.id === deckId)?.name || '每日复习', mode, count: total, ...counts, durationSeconds: dur, masteryGain: 0, timestamp: Date.now(), deckSubject: subj });
+      const activities = [...(prev.daily.activities || [])];
+      activities.push({ 
+        deckId, deckName: decks.find(d => d.id === deckId)?.name || '每日大盘', 
+        mode, count: total, profCounts, 
+        durationSeconds: dur, masteryGain: 0, timestamp: Date.now(), deckSubject: subj 
+      });
       
-      // 英文与语文各自增加修为（每日复习平均分给两科）
       const engGain = mode === 'DAILY_REVIEW' ? cultGain / 2 : (subj === 'English' ? cultGain : 0);
       const cnGain = mode === 'DAILY_REVIEW' ? cultGain / 2 : (subj === 'Chinese' ? cultGain : 0);
+
+      // 同时也保留旧的 count0_1 等字段以防渲染崩溃，但不再作为计算依据
+      const c01 = profCounts[0] + profCounts[1];
+      const c23 = profCounts[2] + profCounts[3];
+      const c45 = profCounts[4] + profCounts[5];
 
       return {
         ...prev, totalReviewCount: prev.totalReviewCount + total,
@@ -255,7 +263,12 @@ export const App: React.FC = () => {
            English: Math.max(0, prev.subjectStats.English + engGain),
            Chinese: Math.max(0, prev.subjectStats.Chinese + cnGain)
         },
-        daily: { ...prev.daily, reviewCount: prev.daily.reviewCount + total, count0_1: prev.daily.count0_1 + counts.count0_1, count2_3: prev.daily.count2_3 + counts.count2_3, count4_5: prev.daily.count4_5 + counts.count4_5, activities }
+        daily: { 
+          ...prev.daily, 
+          reviewCount: prev.daily.reviewCount + total, 
+          count0_1: prev.daily.count0_1 + c01, count2_3: prev.daily.count2_3 + c23, count4_5: prev.daily.count4_5 + c45,
+          activities 
+        }
       };
     });
   },[decks]);
@@ -622,11 +635,16 @@ export const App: React.FC = () => {
                     <span className="text-[9px] font-bold text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded">{deck.phrases.length} 词</span>
                   </div>
                   
-                  <div className="mt-auto">
-                    <div className="flex justify-between text-[9px] font-black uppercase mb-1" style={{ color: getDynamicColor(mastery) }}><span>掌握度</span><span>{mastery.toFixed(1)}%</span></div>
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden shadow-inner relative"><div className="h-full transition-all duration-700 ease-out" style={{width: `${mastery}%`, backgroundColor: getDynamicColor(mastery)}}></div></div>
+                  <div className="mt-auto space-y-3">
+                    <div className="flex justify-between border-t border-slate-50 pt-2 text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
+                      <div className="flex items-center gap-1"><Clock className="w-2.5 h-2.5"/> {formatFullTime(deck.stats?.totalStudyTimeSeconds || 0)}</div>
+                      <div className="flex items-center gap-1"><Hash className="w-2.5 h-2.5"/> {deck.stats?.totalReviewCount || 0} 次操作</div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-[9px] font-black uppercase mb-1" style={{ color: getDynamicColor(mastery) }}><span>掌握度</span><span>{mastery.toFixed(1)}%</span></div>
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden shadow-inner relative"><div className="h-full transition-all duration-700 ease-out" style={{width: `${mastery}%`, backgroundColor: getDynamicColor(mastery)}}></div></div>
+                    </div>
                   </div>
-                </div>
                 
                 <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-50 shrink-0">
                   <Button variant="primary" className="text-xs py-2 font-black shadow-sm" onClick={() => { setActiveDeckId(deck.id); setView(AppView.STUDY); }}><Play className="w-3.5 h-3.5 mr-1" /> 复习</Button>
