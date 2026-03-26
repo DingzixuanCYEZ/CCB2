@@ -39,9 +39,7 @@ export interface DeckSessionLog {
   mode: 'STUDY' | 'EXAM' | 'DAILY_REVIEW'; 
   durationSeconds: number;
   reviewCount: number;
-  count0_1: number; 
-  count2_3: number; 
-  count4_5: number; 
+  profCounts: number[]; // 索引 0-5 对应分值次数
   masteryStart?: number;
   masteryEnd?: number;
   masteryGain?: number;
