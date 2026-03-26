@@ -763,7 +763,7 @@ export const App: React.FC = () => {
           onUpdateDeck={updateDeck}
           onExit={() => setView(AppView.DASHBOARD)}
           onTimeUpdate={handleTimeUpdate}
-          onSessionComplete={(dur, counts, cultGain) => handleSessionComplete(activeDeckId, dur, counts, cultGain, 'STUDY')}
+          onSessionComplete={(dur, profCounts, cultGain) => handleSessionComplete(activeDeckId, dur, profCounts, cultGain, 'STUDY')}
         />
       )}
 
@@ -775,7 +775,7 @@ export const App: React.FC = () => {
           onUpdateDeck={updateDeck}
           onExit={() => setView(AppView.DASHBOARD)}
           onTimeUpdate={handleTimeUpdate}
-          onSessionComplete={(dur, counts, cultGain) => handleSessionComplete(activeDeckId, dur, counts, cultGain, 'EXAM')}
+          onSessionComplete={(dur, profCounts, cultGain) => handleSessionComplete(activeDeckId, dur, profCounts, cultGain, 'STUDY')}
         />
       )}
       
@@ -787,7 +787,7 @@ export const App: React.FC = () => {
           }}
           onExit={() => setView(AppView.DASHBOARD)}
           onTimeUpdate={handleTimeUpdate}
-          onSessionComplete={(dur, counts, cultGain) => handleSessionComplete('daily_hub', dur, counts, cultGain, 'DAILY_REVIEW')}
+          onSessionComplete={(dur, profCounts, cultGain) => handleSessionComplete(activeDeckId, dur, profCounts, cultGain, 'STUDY')}
         />
       )}
 	{/* 单词本管理 */}
