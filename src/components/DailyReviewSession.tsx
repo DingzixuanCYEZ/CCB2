@@ -322,6 +322,12 @@ export const DailyReviewSession: React.FC<DailyReviewSessionProps> = ({
   const handleRequestExit = () => { setIsFinished(true); setPhase('REPORT'); };
   const handleFinalExit = () => { if (onSessionComplete) onSessionComplete(sessionDuration, profCounts, cultivationGain); onExit(); };
 
+  const stats = {
+    count0_1: profCounts[0] + profCounts[1],
+    count2_3: profCounts[2] + profCounts[3],
+    count4_5: profCounts[4] + profCounts[5]
+  };
+
   // ========== UI 渲染逻辑 ==========
 
   if (!isInitialized) {
