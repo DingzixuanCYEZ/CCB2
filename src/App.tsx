@@ -259,10 +259,6 @@ export const App: React.FC = () => {
       const engGain = mode === 'DAILY_REVIEW' ? cultGain / 2 : (subj === 'English' ? cultGain : 0);
       const cnGain = mode === 'DAILY_REVIEW' ? cultGain / 2 : (subj === 'Chinese' ? cultGain : 0);
 
-      // 同时也保留旧的 count0_1 等字段以防渲染崩溃，但不再作为计算依据
-      const c01 = profCounts[0] + profCounts[1];
-      const c23 = profCounts[2] + profCounts[3];
-      const c45 = profCounts[4] + profCounts[5];
 
       return {
         ...prev, totalReviewCount: prev.totalReviewCount + total,
