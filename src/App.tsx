@@ -53,6 +53,10 @@ export const formatFullTime = (seconds: number) => {
 export const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.DASHBOARD);
   const [decks, setDecks] = useState<Deck[]>([]);
+  // 新增：考试难度区间状态
+  const [diffRange, setDiffRange] = useState([0, 5]); 
+  // 新增：删除词本的函数
+  const handleDeleteDeck = (id: string) => setDecks(prev => prev.filter(d => d.id !== id));
   const[folders, setFolders] = useState<Folder[]>([]);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
@@ -633,6 +637,7 @@ export const App: React.FC = () => {
                         {deck.subject === 'Chinese' ? <FileText className="w-5 h-5" /> : <BookOpen className="w-5 h-5" />}
                     </div>
                   </div>
+                  {/* 恢复名称显示 */}
                   <h3 className="font-black text-slate-800 text-base leading-tight mb-1.5 truncate">{deck.name}</h3>
                   <div className="flex gap-1.5 flex-wrap">
                     <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${deck.subject === 'Chinese' ? 'bg-emerald-50 text-emerald-600' : 'bg-indigo-50 text-indigo-600'}`}>{deck.subject === 'Chinese' ? '语文' : '英语'}</span>
@@ -712,7 +717,10 @@ export const App: React.FC = () => {
               setExamTags(newSet);
           };
 
-          const filteredPhrases = deck.phrases.filter(p => examTags.has(getPhraseTag(p)));
+          const filteredPhrases = deck.phrases.filter(p => 
+            examTags.has(getPhraseTag(p)) && 
+            (p.diff || 2.5) >= diffRange[0] && (p.diff || 2.5) <= diffRange[1]
+          );
           const maxCount = filteredPhrases.length;
 
           return (
@@ -725,8 +733,16 @@ export const App: React.FC = () => {
                 </div>
                 
                 <div className="space-y-6 mb-8">
+                  {/* 新增难度选择区间 */}
                   <div>
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest block mb-3">1. 选择出题范围 (包含的状态)</label>
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest block mb-2">1. 记忆难度区间 ({diffRange[0]} - {diffRange[1]})</label>
+                    <div className="flex gap-4 items-center">
+                      <input type="range" min="0" max="5" step="0.5" value={diffRange[0]} onChange={e => setDiffRange([parseFloat(e.target.value), diffRange[1]])} className="flex-1 accent-indigo-600" />
+                      <input type="range" min="0" max="5" step="0.5" value={diffRange[1]} onChange={e => setDiffRange([diffRange[0], parseFloat(e.target.value)])} className="flex-1 accent-indigo-600" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest block mb-3">2. 选择出题范围 (包含的状态)</label>
                     <div className="flex flex-wrap gap-2 p-3 bg-slate-50 border border-slate-100 rounded-xl max-h-32 overflow-y-auto">
                         {availableTags.map(tag => {
                            const isNew = tag === '新';
@@ -796,7 +812,14 @@ export const App: React.FC = () => {
       )}
 	{/* 单词本管理 */}
       {activeDeckId && view === AppView.EDIT_DECK && (
-        <DeckEditor deck={decks.find(d => d.id === activeDeckId)!} onUpdateDeck={updateDeck} onAddDecks={(newDecks) => setDecks(prev => [...prev, ...newDecks])} onBack={() => setView(AppView.DASHBOARD)} />
+        <DeckEditor 
+          deck={decks.find(d => d.id === activeDeckId)!} 
+          folders={folders} // 传文件夹列表
+          onDeleteDeck={handleDeleteDeck} // 传删除函数
+          onUpdateDeck={updateDeck} 
+          onAddDecks={(newDecks) => setDecks(prev => [...prev, ...newDecks])} 
+          onBack={() => setView(AppView.DASHBOARD)} 
+        />
       )}
 
       {/* 新建/导入模块 */}
